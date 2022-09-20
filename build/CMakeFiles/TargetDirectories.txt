@@ -1,0 +1,3 @@
+/home/alias/Projects/CyanDragonFish/build/CMakeFiles/sight.dir
+/home/alias/Projects/CyanDragonFish/build/CMakeFiles/edit_cache.dir
+/home/alias/Projects/CyanDragonFish/build/CMakeFiles/rebuild_cache.dir

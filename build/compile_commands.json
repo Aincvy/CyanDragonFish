@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/home/alias/Projects/CyanDragonFish/build",
+  "command": "/usr/bin/clang++ -g -std=gnu++17 -o CMakeFiles/sight.dir/program.cpp.o -c /home/alias/Projects/CyanDragonFish/program.cpp",
+  "file": "/home/alias/Projects/CyanDragonFish/program.cpp"
+}
+]
