@@ -36,12 +36,20 @@ namespace cdf {
         logError = new spdlog::logger("error", {console_err_sink, fileSink});
     }
 
+    void initMessageLog() {
+        auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>("logs/message.log", 1048576 * 5, 3);
+        fileSink->set_level(spdlog::level::info);
+
+        logMessage = new spdlog::logger("message", { fileSink});
+    }
+
     void initLog(){
         // spdlog::cfg::load_env_levels();
         initConsoleLog();
         logConsole->info("console log is in position.");
-        
+
         initErrorLog();
+        initMessageLog();
     }
 
 }

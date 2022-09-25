@@ -9,10 +9,18 @@
 #include <arpa/inet.h>
 
 #include <event2/event.h>
+#include <mutex>
 #include <signal.h>
 
 namespace cdf {
     
+    static void read_cb(struct bufferevent *bev, void *arg)
+    {
+        struct evbuffer *in = bufferevent_get_input(bev);
+        // evbuffer_write(in, fileno(ctx->fout));
+        
+    }
+
     static void conn_writecb(struct bufferevent *bev, void *user_data)
     {
         struct evbuffer *output = bufferevent_get_output(bev);
@@ -42,13 +50,17 @@ namespace cdf {
 
         bev = bufferevent_socket_new(base, fd, BEV_OPT_CLOSE_ON_FREE);
         if (!bev) {
-            fprintf(stderr, "Error constructing bufferevent!");
-            event_base_loopbreak(base);
+            logError->error("Error constructing bufferevent!");
+            // event_base_loopbreak(base);
             return;
         }
-        bufferevent_setcb(bev, NULL, conn_writecb, conn_eventcb, NULL);
-        bufferevent_enable(bev, EV_WRITE | EV_READ);
 
+        if(currentServer()->networkManager.addNewSession(bev, fd)){
+            bufferevent_setcb(bev, read_cb, conn_writecb, conn_eventcb, NULL);
+            bufferevent_enable(bev, EV_WRITE | EV_READ);
+        } else {
+            logError->error("add new session failed");
+        }
     }
 
     static void signal_cb(evutil_socket_t, short, void *user_data){
@@ -108,6 +120,40 @@ namespace cdf {
         signal_event = nullptr;
         base = nullptr;
         logConsole->info("destroy networkManager done.");
+    }
+
+    bool NetworkManager::addNewSession(struct bufferevent *bev, int fd) {
+        if(!bev) {
+            return false;
+        }
+
+        // std::lock_guard<std::mutex> guard(this->sessionMapMutex);
+        sessionMap[bev] = { bev, fd};
+        return true;
+    }
+
+    NetworkSession::NetworkSession()
+    {
+        
+    }
+
+    NetworkSession::NetworkSession(struct bufferevent *bev, int fd)
+        : bev(bev), fd(fd)
+    {
+        
+    }
+
+    NetworkSession::~NetworkSession()
+    {
+        
+    }
+
+    void NetworkSession::close() {
+        reset();
+    }
+
+    void NetworkSession::reset() {
+        // todo 
     }
 
 }

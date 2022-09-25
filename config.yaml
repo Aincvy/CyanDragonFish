@@ -1,5 +1,7 @@
 server:
   port: 14999
   address: 0.0.0.0
+  network-thread-count: 2
+  logic-thread-count: 2
 player:
   maxOnline: 20

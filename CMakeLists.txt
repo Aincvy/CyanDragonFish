@@ -30,10 +30,13 @@ find_package(spdlog REQUIRED)
 # abseil
 find_package(absl REQUIRED)
 
+find_package(protobuf REQUIRED)
+
 target_include_directories(
     cyanDragonFish PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${YAML_CPP_INCLUDE_DIR}
+    ${Protobuf_INCLUDE_DIRS}
 )
 
 SET(EXTRA_LIBS ${YAML_CPP_LIBRARIES} 
@@ -45,6 +48,7 @@ SET(EXTRA_LIBS ${YAML_CPP_LIBRARIES}
     absl::flat_hash_map
     absl::flat_hash_set
     absl::btree       
+    protobuf::libprotobuf
 )
 
 target_link_libraries(cyanDragonFish PRIVATE ${EXTRA_LIBS})

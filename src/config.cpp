@@ -35,6 +35,18 @@ namespace cdf {
             {
                 config.server.address = temp.as<std::string>();
             }
+
+            temp = serverNode["network-thread-count"];
+            if (temp.IsDefined())
+            {
+                config.server.networkThreadCount = temp.as<uint>();
+            }
+
+            temp = serverNode["logic-thread-count"];
+            if (temp.IsDefined())
+            {
+                config.server.logicThreadCount = temp.as<uint>();
+            }
         }
 
         auto  playerNode = root["player"];

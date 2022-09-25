@@ -15,6 +15,8 @@ namespace cdf {
         // listen address
         std::string address = "0.0.0.0"; 
         ushort port = 14999;
+        ushort networkThreadCount = 2;
+        ushort logicThreadCount = 2;
     };
 
     struct LaunchConfigPlayer {

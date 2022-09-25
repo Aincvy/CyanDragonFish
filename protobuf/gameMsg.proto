@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package cdf.entity;
+
+
+message ReqHello {
+    string token = 1;
+    string clientVersion = 2;
+}
+
+message ResHello {
+    string serverVersion = 1;
+    bool isFull = 2;
+}
+
