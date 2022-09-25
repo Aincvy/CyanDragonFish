@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-SET(CMAKE_MODULE_PATH APPEND "${CMAKE_SOURCE_DIR}/cmake/" )
+SET(CMAKE_MODULE_PATH APPEND "${PROJECT_SOURCE_DIR}/cmake/" )
 
 project(cyanDragonFish)
 
@@ -9,4 +9,43 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_BUILD_TYPE "Debug")
 set(CMAKE_EXPORT_COMPILECOMMANDS ON)
 
-add_executable(sight program.cpp)
+add_executable(cyanDragonFish program.cpp)
+
+target_sources(cyanDragonFish PRIVATE 
+    src/player.cpp
+    src/network.cpp
+    src/config.cpp
+    src/log.cpp
+    src/server.cpp
+)
+
+find_package(Libevent 2.1.12 REQUIRED COMPONENTS core)
+
+# yaml-cpp
+find_package(yaml-cpp REQUIRED)
+MESSAGE(STATUS "Found yaml-cpp at: ${YAML_CPP_INCLUDE_DIR}")
+
+find_package(spdlog REQUIRED)
+
+# abseil
+find_package(absl REQUIRED)
+
+target_include_directories(
+    cyanDragonFish PRIVATE
+    ${PROJECT_SOURCE_DIR}/include
+    ${YAML_CPP_INCLUDE_DIR}
+)
+
+SET(EXTRA_LIBS ${YAML_CPP_LIBRARIES} 
+    libevent::core 
+    spdlog::spdlog
+    absl::base
+    absl::strings
+    absl::hash
+    absl::flat_hash_map
+    absl::flat_hash_set
+    absl::btree       
+)
+
+target_link_libraries(cyanDragonFish PRIVATE ${EXTRA_LIBS})
+MESSAGE(STATUS "Found extra-lib at: ${EXTRA_LIBS}")

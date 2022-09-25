@@ -1,0 +1,5 @@
+server:
+  port: 14999
+  address: 0.0.0.0
+player:
+  maxOnline: 20
