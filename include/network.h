@@ -5,6 +5,8 @@
 #pragma once
 
 #include <mutex>
+#include <string>
+#include <string_view>
 #include <sys/types.h>
 
 #include <event2/bufferevent.h>
@@ -15,37 +17,86 @@
 
 #include <absl/container/flat_hash_map.h>
 
+#include <atomic>
+
 #define BUFFER_SIZE  512 * 1024
 
 namespace cdf {
     
+    struct BufferLockGuard{
+        BufferLockGuard(struct evbuffer* buf);
+        ~BufferLockGuard();
+
+    private:
+        struct evbuffer* buf = nullptr;
+    };
+
     struct NetMessage{
         uint command = 0;
         uint errorCode = 0;
         char *buffer = nullptr;
         uint bufferLength = 0;
+
+        /**
+         * free buffer 
+         */
+        void free();
+
     };
 
     struct NetworkSession {
 
-        NetworkSession();
-        NetworkSession(struct bufferevent *bev, int fd);
+        NetworkSession(int sessionId);
+        NetworkSession(struct bufferevent *bev, int fd, int sessionId);
         ~NetworkSession();
 
         void write(const char* msg, ushort len);
 
         void close();
 
+        void setAddressInfo(std::string_view ip, ushort port);
+
+        std::string_view getIpAddress() const;
+        ushort getPort() const;
+
+        struct evbuffer* getReadBuffer();
+        struct evbuffer* getWriteBuffer();
+
+        int getFd() const;
+
+        /**
+         * 
+         */
+        bool hasMessage();
+
+        /**
+         * after use the msg, you need call `free` function.
+         */
+        NetMessage nextMessage();
+
+        int getSessionId() const;        
+
     private: 
         // 
-        uint writeCursor = 0;
-        char* readBuffer[BUFFER_SIZE] = {0};
-        char* writeBuffer[BUFFER_SIZE] = {0};
+        // uint writeCursor = 0;
+        // char* readBuffer[BUFFER_SIZE] = {0};
+        // char* writeBuffer[BUFFER_SIZE] = {0};
+
+        struct evbuffer* readBuffer = nullptr;
+        struct evbuffer* writeBuffer = nullptr;
 
         int fd = 0;
         struct bufferevent *bev = nullptr;
 
+        std::string ipAddress;
+        ushort port;
+
+        ushort currentPacketLength = 0;
+
+        int sessionId = 0;
+
         void reset();
+        void initBuffer(); 
     };
 
 
@@ -63,7 +114,22 @@ namespace cdf {
 
         void detroy();
 
-        bool addNewSession(struct bufferevent *bev, int fd);
+        /**
+         * Create a session.
+         */
+        NetworkSession* addNewSession(struct bufferevent *bev, int fd);
+
+        /**
+         * Remove a session.
+         */
+        bool removeSession(struct bufferevent* bev);
+
+        /**
+         * 
+         */
+        void onSessionClosed(struct  bufferevent* bev, int reason = 0);
+
+        absl::flat_hash_map<struct bufferevent *, NetworkSession*> getSessionMapCopy();
 
     private:
         struct event_base *base;
@@ -71,9 +137,9 @@ namespace cdf {
 	    struct event *signal_event;
         struct sockaddr_in sin;
 
-        absl::flat_hash_map<struct bufferevent *, NetworkSession> sessionMap;
+        absl::flat_hash_map<struct bufferevent *, NetworkSession*> sessionMap;
         std::mutex sessionMapMutex;    // mutex for session map.
-
+        std::atomic_int sessionIdIncr = 10000;
     };
 
 }

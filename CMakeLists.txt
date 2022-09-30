@@ -41,6 +41,7 @@ target_include_directories(
 
 SET(EXTRA_LIBS ${YAML_CPP_LIBRARIES} 
     libevent::core 
+    libevent::pthreads 
     spdlog::spdlog
     absl::base
     absl::strings
@@ -48,6 +49,7 @@ SET(EXTRA_LIBS ${YAML_CPP_LIBRARIES}
     absl::flat_hash_map
     absl::flat_hash_set
     absl::btree       
+    absl::random_random
     protobuf::libprotobuf
 )
 

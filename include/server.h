@@ -7,6 +7,8 @@
 #include "config.h"
 #include <string_view>
 
+#include <atomic>
+
 #include "network.h"
 #include "player.h"
 
@@ -15,6 +17,13 @@ namespace cdf {
         LaunchConfig launchConfig;
         PlayerManager playerManager;
         NetworkManager networkManager;
+
+        void shutdownServer();
+        bool isShutdown() const;
+        bool isRunning() const;
+
+    private:
+        std::atomic_bool running = true;
     };
 
 
