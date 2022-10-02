@@ -4,6 +4,10 @@
 
 #pragma once
 
+#ifdef CyanDragonFishDebug
+#define SPDLOG_ACTIVE_LEVEL 0
+#endif // CyanDragonFishDebug
+
 #include "spdlog/spdlog.h"
 #include <spdlog/logger.h>
 
@@ -16,4 +20,9 @@ namespace cdf {
 
     void initLog();
     
+    /**
+     * sync log to file.
+     */
+    void flushLog();
+
 }

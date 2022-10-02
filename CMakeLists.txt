@@ -1,15 +1,29 @@
 cmake_minimum_required(VERSION 3.10)
 SET(CMAKE_MODULE_PATH APPEND "${PROJECT_SOURCE_DIR}/cmake/" )
 
+SET(CyanDragonFishRelease false)
+
 project(cyanDragonFish)
 
 # specify the C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-set(CMAKE_BUILD_TYPE "Debug")
 set(CMAKE_EXPORT_COMPILECOMMANDS ON)
 
 add_executable(cyanDragonFish program.cpp)
+
+if(${CyanDragonFishRelease}) 
+    MESSAGE(STATUS "CyanDragonFishRelease")
+    set(CMAKE_BUILD_TYPE "Release")
+    target_compile_definitions(cyanDragonFish PUBLIC CyanDragonFishRelease=1)
+else ()
+    MESSAGE(STATUS "CyanDragonFishDebug")
+    set(CMAKE_BUILD_TYPE "Debug")
+    target_compile_definitions(cyanDragonFish PUBLIC CyanDragonFishDebug=1)
+endif()
+
+file(GLOB msgSources "src/msg/*.cc")
+MESSAGE(STATUS "protobuf msg: ${msgSources}")
 
 target_sources(cyanDragonFish PRIVATE 
     src/player.cpp
@@ -17,6 +31,8 @@ target_sources(cyanDragonFish PRIVATE
     src/config.cpp
     src/log.cpp
     src/server.cpp
+
+    ${msgSources}
 )
 
 find_package(Libevent 2.1.12 REQUIRED COMPONENTS core)
@@ -35,6 +51,7 @@ find_package(protobuf REQUIRED)
 target_include_directories(
     cyanDragonFish PRIVATE
     ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/include/msg
     ${YAML_CPP_INCLUDE_DIR}
     ${Protobuf_INCLUDE_DIRS}
 )

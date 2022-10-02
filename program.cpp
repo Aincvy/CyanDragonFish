@@ -1,10 +1,10 @@
+#include "log.h"
 #include "server.h"
 #include "stdio.h"
 #include "spdlog/spdlog.h"
 #include "spdlog/cfg/env.h"
 #include "spdlog/sinks/stdout_color_sinks.h"
 
-#include "log.h"
 #include "network.h"
 #include <string_view>
 
@@ -15,7 +15,8 @@ namespace cdf {
         initLog();
         logConsole->info("program start!");
         initServer(configPath);
-    
+
+        currentServer()->shutdownServer();
         return 0;
     }
 

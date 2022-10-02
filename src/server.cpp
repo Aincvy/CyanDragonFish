@@ -1,3 +1,5 @@
+#include "log.h"
+
 #include "server.h"
 #include "common.h"
 #include "config.h"
@@ -15,6 +17,7 @@ namespace cdf {
         // init 
         g_server->networkManager.init();
         g_server->playerManager.init();
+        flushLog();
 
         g_server->networkManager.serv();
         return CODE_OK;
@@ -26,6 +29,11 @@ namespace cdf {
 
     void Server::shutdownServer() {
         running = false;
+
+        networkManager.detroy();
+        playerManager.destroy();
+
+        flushLog();
     }
 
     bool Server::isShutdown() const {

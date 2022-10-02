@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package cdf.msg;
+
+
+enum Command {
+    Hello = 0;
+    
+    LoginAccount = 1000;
+    GetMyInfo = 1001;
+}
+
+enum ErrorCode {
+    OK = 0;  
+
+    PASSWORD_FAIL = 1000;
+
+}

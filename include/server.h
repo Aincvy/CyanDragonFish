@@ -12,7 +12,12 @@
 #include "network.h"
 #include "player.h"
 
+#define SERVER_VERSION 1
+#define SERVER_VERSION_STR "0.1"
+
+
 namespace cdf {
+
     struct Server {
         LaunchConfig launchConfig;
         PlayerManager playerManager;

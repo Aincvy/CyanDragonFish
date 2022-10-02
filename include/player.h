@@ -5,6 +5,7 @@
 #pragma once
 
 #include <sys/types.h>
+#include <thread>
 #include <vector>
 #include <mutex>
 #include <condition_variable>
@@ -14,6 +15,8 @@
 #include <absl/container/flat_hash_map.h>
 
 namespace cdf {
+
+    struct PlayerThreadQueue;
 
     /**
      * player class 
@@ -28,7 +31,9 @@ namespace cdf {
 
         uint getPlayerId() const;
 
+        void write(int cmd, int errorCode, google::protobuf::Message* message = nullptr);
 
+        void setPlayerThreadQueue(PlayerThreadQueue* queue);
 
     private:
         uint playerId = 0;
@@ -36,6 +41,7 @@ namespace cdf {
         // login or not ?
         bool isLogin = false;
 
+        PlayerThreadQueue* threadQueue = nullptr;
     };
 
     /**
@@ -69,9 +75,13 @@ namespace cdf {
 
         int createPlayer(NetworkSession* session);
 
+        void destroy();
+
     private:
         absl::flat_hash_map<uint, Player*> playerMap;
         absl::flat_hash_map<uint, PlayerThreadQueue*> queueMap;
+
+        std::vector<std::thread*> logicThreads;
 
         bool initFlag = false;
     };

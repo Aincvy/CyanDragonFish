@@ -1,15 +1,40 @@
 syntax = "proto3";
 
-package cdf.entity;
+package cdf.msg;
 
+message GameMsgReq {
+    int32 command = 1;
+    bytes content = 2;
+}
+
+message GameMsgRes {
+    int32 command = 1;
+    int32 error_code = 2;
+    bytes content = 3;
+}
 
 message ReqHello {
     string token = 1;
-    string clientVersion = 2;
+    string client_version = 2;
 }
 
 message ResHello {
-    string serverVersion = 1;
-    bool isFull = 2;
+    string server_version = 1;
+    bool is_full = 2;
+}
+
+// 
+message Empty {
+
+}
+
+message Account {
+    string username = 1;
+    string password = 2; 
+}
+
+message ReqLoginAccount {
+    Account account = 1;
+    bool register = 2;  
 }
 

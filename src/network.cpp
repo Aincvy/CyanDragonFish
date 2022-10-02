@@ -1,10 +1,12 @@
+#include "log.h"
+
 #include "network.h"
 
 #include "common.h"
 #include "server.h"
 #include "spdlog/spdlog.h"
-#include "log.h"
 #include <cassert>
+#include <cstdint>
 #include <cstdlib>
 #include <arpa/inet.h>
 
@@ -12,21 +14,28 @@
 #include <event2/event.h>
 #include <event2/thread.h>
 
+#include <google/protobuf/stubs/common.h>
+#include <google/protobuf/text_format.h>
 #include <mutex>
 #include <netinet/in.h>
 #include <signal.h>
 
+#include <sstream>
+#include <string>
 #include <sys/types.h>
 #include <thread>
 #include <chrono>
 #include <iostream>
 
 #include <absl/random/random.h>
+#include <absl/strings/substitute.h>
 
 namespace cdf {
     
+    using namespace msg;
+
     namespace {
-        void networkWriteThread() {
+        void networkWriteThreadRun() {
             using namespace std::chrono_literals;
 
             auto server = currentServer();
@@ -52,6 +61,7 @@ namespace cdf {
         struct evbuffer *in = bufferevent_get_input(bev);
         // evbuffer_write(in, fileno(ctx->fout));
         auto len = evbuffer_get_length(in);
+        logMessage->debug("read_cb: {}", len);
         if(len > 0){
             auto target = session->getReadBuffer();
             BufferLockGuard l(target);
@@ -63,6 +73,7 @@ namespace cdf {
     static void conn_writecb(struct bufferevent *bev, void *user_data)
     {
         auto* session = (NetworkSession*) user_data;
+        logMessage->debug("conn_writecb...");
         // struct evbuffer *output = bufferevent_get_output(bev);
         // if (evbuffer_get_length(output) == 0) {
         //     printf("flushed answer\n");
@@ -74,14 +85,14 @@ namespace cdf {
     {
         auto* session = (NetworkSession*) user_data;
         if (events & BEV_EVENT_EOF) {
-            // printf("Connection closed.\n");
-            logMessage->info("session closed, remote address: {}:{}", session->getIpAddress(), session->getPort());
+            logMessage->info("session closed {}, playerId: {}, remote address: {}:{}", session->getSessionId(), session->getPlayerId(), session->getIpAddress(), session->getPort());
         } else if (events & BEV_EVENT_ERROR) {
-            printf("Got an error on the connection: %s\n",
-                strerror(errno));/*XXX win32*/
+            SPDLOG_LOGGER_ERROR(logError, "Got an error on the connection. {}, playerId: {}, remote address: {}:{}, reason: {}", 
+                session->getSessionId(), session->getPlayerId(),  session->getIpAddress(), session->getPort(), strerror(errno) );
         }
         /* None of the other events can happen here, since we haven't enabled
         * timeouts */
+
         bufferevent_free(bev);
     }
 
@@ -97,6 +108,7 @@ namespace cdf {
             return;
         }
         
+        logConsole->debug("new connection coming.");
         auto networkMgr =  &(currentServer()->networkManager);
         NetworkSession* session = nullptr;
         if((session = currentServer()->networkManager.addNewSession(bev, fd))){
@@ -104,7 +116,7 @@ namespace cdf {
             struct sockaddr_in *sin = (struct sockaddr_in *)sa;
             inet_ntop (AF_INET, &sin->sin_addr, ip, sizeof (ip));
             session->setAddressInfo(ip, htons(sin->sin_port));
-            logMessage->info("session created, remote address: {}:{}", session->getIpAddress(), session->getPort());
+            logMessage->info("session created: {}, remote address: {}:{}", session->getSessionId(), session->getIpAddress(), session->getPort());
 
             currentServer()->playerManager.createPlayer(session);
             bufferevent_setcb(bev, read_cb, conn_writecb, fd_eventcb, session);
@@ -126,7 +138,7 @@ namespace cdf {
 
     void NetworkManager::serv() {
         assert(base);
-        logConsole->info("network serv");
+        SPDLOG_LOGGER_INFO(logConsole, "network serv");
         event_base_dispatch(base);
     }
 
@@ -136,7 +148,11 @@ namespace cdf {
             return;
         }
 
-        evthread_use_pthreads();
+        logConsole->info("check protobuf version.");
+        GOOGLE_PROTOBUF_VERIFY_VERSION;
+        logConsole->info("check success, protobuf version: {}, v{}", GOOGLE_PROTOBUF_VERSION, google::protobuf::internal::VersionString(GOOGLE_PROTOBUF_VERSION));
+
+        // evthread_use_pthreads();      // ... 
         base = event_base_new();
         if(base == nullptr){
             logError->error("Could not initialize libevent!");
@@ -166,13 +182,19 @@ namespace cdf {
         }
 
         logConsole->info("try start network-thread");
-        std::thread t(networkWriteThread);
+        networkWriteThread = new std::thread(networkWriteThreadRun);
 
         logConsole->info("networkManager init success.");
     }
 
     void NetworkManager::detroy() {
         logConsole->info("destroy networkManager...");
+
+        logConsole->info("wait for network thread shutdown");
+        networkWriteThread->join();
+        delete networkWriteThread;
+        networkWriteThread = nullptr;
+
         evconnlistener_free(listener);
         event_free(signal_event);
         event_base_free(base);
@@ -180,6 +202,10 @@ namespace cdf {
         listener = nullptr;
         signal_event = nullptr;
         base = nullptr;
+
+        logConsole->info("destroy google protobuf ");
+        google::protobuf::ShutdownProtobufLibrary();
+
         logConsole->info("destroy networkManager done.");
     }
 
@@ -198,7 +224,7 @@ namespace cdf {
     bool NetworkManager::removeSession(struct bufferevent* bev) {
         auto result = sessionMap.find(bev);
         if(result != sessionMap.end()){
-
+            SPDLOG_LOGGER_INFO(logMessage, "remove session: {}", result->second->debugString());
             delete result->second;
             sessionMap.erase(result);
             return true;
@@ -230,8 +256,37 @@ namespace cdf {
         reset();
     }
 
-    void NetworkSession::close() {
-        reset();
+    void NetworkSession::write(msg::GameMsgRes const& msg) {
+        auto str = msg.SerializeAsString();    
+        BufferLockGuard l(writeBuffer);
+        ushort len = str.length();
+        evbuffer_add(writeBuffer, &len, sizeof(len));
+        evbuffer_add(writeBuffer, str.c_str(), str.length());
+    }
+
+    void NetworkSession::write(int cmd, int errorCode, google::protobuf::Message* message) {
+        GameMsgRes msg;
+        msg.set_command(cmd);
+        if(message) {
+            std::string str = message->SerializeAsString();
+            msg.set_content(str);
+
+            static google::protobuf::TextFormat::Printer printer;
+            printer.SetSingleLineMode(true);
+            if(std::string tmp; printer.PrintToString(*message, &tmp)){
+                logMessage->debug("Send To {},[CEV]: {} {} [{}] {}", playerId, cmd, errorCode,message->GetTypeName(), tmp);
+            } else {
+                logMessage->debug("Send To {},[CEV]: {} {} [{}] {}", playerId, cmd, errorCode, message->GetTypeName(), message->ShortDebugString());
+            }
+        } else {
+            logMessage->debug("Send To {},[CEV]: {} {} {}", playerId, cmd, errorCode, message->GetTypeName());
+        }
+        
+        write(msg);
+    }
+
+    void NetworkSession::close(int reason) {
+        currentServer()->networkManager.onSessionClosed(this->bev, reason);
     }
 
     void NetworkSession::setAddressInfo(std::string_view ip, ushort port) {
@@ -262,6 +317,10 @@ namespace cdf {
     bool NetworkSession::hasMessage() {
         BufferLockGuard l(readBuffer);
         auto len = evbuffer_get_length(readBuffer);
+        if(len <= 0) {
+            return false;
+        }
+
         if(currentPacketLength == 0) {
             // 2 byte as length
             constexpr const int lengthHolderLen = sizeof(currentPacketLength);
@@ -277,30 +336,48 @@ namespace cdf {
         return len >= currentPacketLength;
     }
 
-    NetMessage NetworkSession::nextMessage() {
+    GameMsgReq NetworkSession::nextMessage() {
         BufferLockGuard l(readBuffer);
         auto len = evbuffer_get_length(readBuffer);
         if(len < currentPacketLength) {
             return {};
         }
 
-        NetMessage msg;
-        // read command 
-        evbuffer_remove(readBuffer, &msg.command, sizeof(msg.command));
-        currentPacketLength -= sizeof(msg.command);
-        // read body 
-        msg.bufferLength = currentPacketLength;
-        msg.buffer = (char*)calloc(1, sizeof(char) * currentPacketLength);
-        evbuffer_remove(readBuffer, msg.buffer, msg.bufferLength);
-        return msg;
+        auto buffer = new char[currentPacketLength];
+        evbuffer_remove(readBuffer, buffer, currentPacketLength);
+        GameMsgReq msgReq;
+        std::stringstream ss;
+        for(int i = 0; i < currentPacketLength; i++) {
+            ss << static_cast<int>(buffer[i]);
+            ss << ", ";
+        }
+        SPDLOG_LOGGER_DEBUG(logMessage, "bytes: {}", ss.str());
+        if(!msgReq.ParseFromArray(buffer, currentPacketLength)){
+            SPDLOG_LOGGER_ERROR(logError, "parse game msg error from {}:{}", getIpAddress(), getPort());
+        }
+        delete [] buffer;
+        currentPacketLength = 0;
+        return msgReq;
     }
 
     int NetworkSession::getSessionId() const {
         return sessionId;
     }
 
+    void NetworkSession::setPlayerId(uint playerId) {
+        this->playerId = playerId;
+    }
+
+    uint NetworkSession::getPlayerId() const {
+        return playerId;
+    }
+
+    std::string NetworkSession::debugString() const {
+        return absl::Substitute("$0,playerId: $1, remote address: $2:$3", sessionId, playerId, ipAddress, port);
+    }
+
     void NetworkSession::reset() {
-        // todo 
+        
         if(readBuffer) {
             evbuffer_free(readBuffer);
         }
@@ -333,13 +410,6 @@ namespace cdf {
     BufferLockGuard::~BufferLockGuard()
     {
         evbuffer_unlock(buf);
-    }
-
-    void NetMessage::free() {
-        if(this->buffer){
-            std::free(buffer);
-            buffer = nullptr;
-        }
     }
 
 }

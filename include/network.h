@@ -18,6 +18,11 @@
 #include <absl/container/flat_hash_map.h>
 
 #include <atomic>
+#include <thread>
+
+#include <google/protobuf/message.h>
+
+#include "gameMsg.pb.h"
 
 #define BUFFER_SIZE  512 * 1024
 
@@ -31,18 +36,10 @@ namespace cdf {
         struct evbuffer* buf = nullptr;
     };
 
-    struct NetMessage{
-        uint command = 0;
-        uint errorCode = 0;
-        char *buffer = nullptr;
-        uint bufferLength = 0;
-
-        /**
-         * free buffer 
-         */
-        void free();
-
-    };
+    // struct NetMessage{
+    //     msg::GameMsgReq req;
+    //     msg::GameMsgRes res;
+    // };
 
     struct NetworkSession {
 
@@ -50,9 +47,10 @@ namespace cdf {
         NetworkSession(struct bufferevent *bev, int fd, int sessionId);
         ~NetworkSession();
 
-        void write(const char* msg, ushort len);
+        void write(msg::GameMsgRes const& msg);
+        void write(int cmd, int errorCode, google::protobuf::Message* message = nullptr);
 
-        void close();
+        void close(int reason = 0);
 
         void setAddressInfo(std::string_view ip, ushort port);
 
@@ -72,9 +70,14 @@ namespace cdf {
         /**
          * after use the msg, you need call `free` function.
          */
-        NetMessage nextMessage();
+        msg::GameMsgReq nextMessage();
 
         int getSessionId() const;        
+
+        void setPlayerId(uint playerId);
+        uint getPlayerId() const;
+
+        std::string debugString() const;
 
     private: 
         // 
@@ -94,6 +97,8 @@ namespace cdf {
         ushort currentPacketLength = 0;
 
         int sessionId = 0;
+        // for log and find player 
+        uint playerId = 0;   
 
         void reset();
         void initBuffer(); 
@@ -127,7 +132,7 @@ namespace cdf {
         /**
          * 
          */
-        void onSessionClosed(struct  bufferevent* bev, int reason = 0);
+        void onSessionClosed(struct bufferevent* bev, int reason = 0);
 
         absl::flat_hash_map<struct bufferevent *, NetworkSession*> getSessionMapCopy();
 
@@ -140,6 +145,8 @@ namespace cdf {
         absl::flat_hash_map<struct bufferevent *, NetworkSession*> sessionMap;
         std::mutex sessionMapMutex;    // mutex for session map.
         std::atomic_int sessionIdIncr = 10000;
+
+        std::thread* networkWriteThread = nullptr;
     };
 
 }
