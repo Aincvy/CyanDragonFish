@@ -345,13 +345,13 @@ namespace cdf {
 
         auto buffer = new char[currentPacketLength];
         evbuffer_remove(readBuffer, buffer, currentPacketLength);
+        // std::stringstream ss;
+        // for(int i = 0; i < currentPacketLength; i++) {
+        //     ss << static_cast<int>(buffer[i]);
+        //     ss << ", ";
+        // }
+        // SPDLOG_LOGGER_DEBUG(logMessage, "bytes: {}", ss.str());
         GameMsgReq msgReq;
-        std::stringstream ss;
-        for(int i = 0; i < currentPacketLength; i++) {
-            ss << static_cast<int>(buffer[i]);
-            ss << ", ";
-        }
-        SPDLOG_LOGGER_DEBUG(logMessage, "bytes: {}", ss.str());
         if(!msgReq.ParseFromArray(buffer, currentPacketLength)){
             SPDLOG_LOGGER_ERROR(logError, "parse game msg error from {}:{}", getIpAddress(), getPort());
         }

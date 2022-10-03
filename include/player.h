@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <functional>
 #include <sys/types.h>
 #include <thread>
 #include <vector>
@@ -14,9 +15,11 @@
 
 #include <absl/container/flat_hash_map.h>
 
+#include "gameMsg.pb.h"
+
 namespace cdf {
 
-    struct PlayerThreadQueue;
+    struct PlayerThreadLocal;
 
     /**
      * player class 
@@ -33,7 +36,9 @@ namespace cdf {
 
         void write(int cmd, int errorCode, google::protobuf::Message* message = nullptr);
 
-        void setPlayerThreadQueue(PlayerThreadQueue* queue);
+        void setPlayerThread(PlayerThreadLocal* queue);
+
+        PlayerThreadLocal* getPlayerThread();
 
     private:
         uint playerId = 0;
@@ -41,13 +46,13 @@ namespace cdf {
         // login or not ?
         bool isLogin = false;
 
-        PlayerThreadQueue* threadQueue = nullptr;
+        PlayerThreadLocal* threadLocal = nullptr;
     };
 
     /**
-     * Not a queue. 
+     * 
      */
-    struct PlayerThreadQueue {
+    struct PlayerThreadLocal {
         
         bool empty() const;
 
@@ -65,6 +70,7 @@ namespace cdf {
         std::vector<Player*> list;
         std::mutex listMutex; 
         std::condition_variable condVar;
+
     };
 
     struct PlayerManager {
@@ -79,11 +85,13 @@ namespace cdf {
 
     private:
         absl::flat_hash_map<uint, Player*> playerMap;
-        absl::flat_hash_map<uint, PlayerThreadQueue*> queueMap;
+        absl::flat_hash_map<uint, PlayerThreadLocal*> queueMap;
 
         std::vector<std::thread*> logicThreads;
 
         bool initFlag = false;
     };
+
+    void onCommand(int cmd, std::function<void(Player* player, msg::GameMsgReq const& msg)> callback);
 
 }

@@ -16,6 +16,9 @@ namespace cdf {
     spdlog::logger* logMessage;
     spdlog::logger* logService;
 
+    std::shared_ptr<spdlog::sinks::stderr_color_sink_mt> console_err_sink = nullptr;
+    std::shared_ptr<spdlog::sinks::rotating_file_sink_mt> error_file_sink = nullptr;
+
     void initConsoleLog() {
         auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
         auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>("logs/console.log", 1048576 * 5, 3);
@@ -36,13 +39,13 @@ namespace cdf {
     }
 
     void initErrorLog() {
-        auto console_err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+        console_err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
         console_err_sink->set_level(spdlog::level::err);
         
-        auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>("logs/error.log", 1048576 * 5, 3);
-        fileSink->set_level(spdlog::level::err);
+        error_file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>("logs/error.log", 1048576 * 5, 3);
+        error_file_sink->set_level(spdlog::level::err);
 
-        logError = new spdlog::logger("error", {console_err_sink, fileSink});
+        logError = new spdlog::logger("error", {console_err_sink, error_file_sink});
         logError->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%s:%#(%!)] [%t] [%^%l%$] %v");
     }
 
@@ -50,7 +53,7 @@ namespace cdf {
         auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>("logs/message.log", 1048576 * 5, 3);
         fileSink->set_level(spdlog::level::debug);
 
-        logMessage = new spdlog::logger("message", fileSink);
+        logMessage = new spdlog::logger("message", {fileSink,  console_err_sink, error_file_sink});
         logMessage->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%s:%#(%!)] [%t] [%^%l%$] %v");
 
 #ifdef CyanDragonFishDebug

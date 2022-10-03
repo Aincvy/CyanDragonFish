@@ -5,7 +5,9 @@
 #include "server.h"
 #include <algorithm>
 #include <cassert>
+#include <functional>
 #include <mutex>
+#include <spdlog/spdlog.h>
 #include <string>
 #include <sys/types.h>
 #include <thread>
@@ -16,13 +18,18 @@
 
 #include <google/protobuf/text_format.h>
 
+#include <absl/container/flat_hash_map.h>
+
 namespace cdf {
 
     using namespace msg;
 
+    absl::flat_hash_map<int, std::function<void(Player* player, GameMsgReq const& msg)>> handlerMap;
+
+
     namespace {
 
-        void playerLogicThread(PlayerThreadQueue* queue)  {
+        void playerLogicThread(PlayerThreadLocal* queue)  {
             using namespace std::chrono_literals;
 
             google::protobuf::TextFormat::Printer printer;
@@ -44,27 +51,13 @@ namespace cdf {
                     while (session->hasMessage() && ++tmpMsgCount < 15)
                     {
                         auto msg = session->nextMessage();
-                        
-                        
-                        
+                    
                         // handle message .
-                        ReqHello reqHello;
-                        if(reqHello.ParseFromString(msg.content())) {
-
-                            if(std::string tmp; printer.PrintToString(reqHello, &tmp)){
-                                logMessage->debug("Recv Fm {},[CV] {} [{}] {}", item->getPlayerId(), msg.command(),reqHello.GetTypeName(), tmp);
-                            } else {
-                                logMessage->debug("Recv Fm {},[CV] {} [{}] {}", item->getPlayerId(), msg.command(),reqHello.GetTypeName(), reqHello.ShortDebugString());
-                            }
-
-                            // write 
-                            ResHello resHello;
-                            resHello.set_is_full(false);
-                            resHello.set_server_version(SERVER_VERSION_STR);
-
-                            item->write(Command::Hello, 0, &resHello);
+                        auto handlerIter = handlerMap.find(msg.command());
+                        if(handlerIter == handlerMap.end()) {
+                            SPDLOG_LOGGER_ERROR(logMessage, "could not find handler for command: {}", msg.command());
                         } else {
-                            logConsole->debug("parse reqHello, error.");
+                            handlerIter->second(item, msg);
                         }
 
                     }    
@@ -99,8 +92,12 @@ namespace cdf {
         session->write(cmd, errorCode, message);
     }
 
-    void Player::setPlayerThreadQueue(PlayerThreadQueue* queue) {
-        this->threadQueue = queue;
+    void Player::setPlayerThread(PlayerThreadLocal* threadLocal) {
+        this->threadLocal = threadLocal;
+    }
+
+    PlayerThreadLocal* Player::getPlayerThread() {
+        return threadLocal;
     }
 
     void PlayerManager::init() {
@@ -111,7 +108,7 @@ namespace cdf {
         auto threadCount = std::max(server->launchConfig.server.logicThreadCount, (ushort)1);
 
         for (int i = 0; i < threadCount; i++) {
-            auto p = new PlayerThreadQueue();
+            auto p = new PlayerThreadLocal();
             queueMap[i] = p;
 
             auto t = new std::thread(playerLogicThread, p);
@@ -145,11 +142,11 @@ namespace cdf {
         logConsole->info("playerManager destroy success.");
     }
 
-    bool PlayerThreadQueue::empty() const {
+    bool PlayerThreadLocal::empty() const {
         return list.empty();
     }
 
-    bool PlayerThreadQueue::hasMessage() const {
+    bool PlayerThreadLocal::hasMessage() const {
         bool flag = false;
         for (auto const& item : list) {
             if (item->getSession()->hasMessage())
@@ -162,23 +159,32 @@ namespace cdf {
         return flag;
     }
 
-    void PlayerThreadQueue::addPlayer(Player* p) {
+    void PlayerThreadLocal::addPlayer(Player* p) {
         std::lock_guard<std::mutex> l(this->listMutex);
         list.push_back(p);
-        p->setPlayerThreadQueue(this);
+        p->setPlayerThread(this);
     }
 
-    void PlayerThreadQueue::wait() {
+    void PlayerThreadLocal::wait() {
         std::unique_lock<std::mutex> l(this->listMutex);
         condVar.wait(l);
     }
 
-    void PlayerThreadQueue::notify() {
+    void PlayerThreadLocal::notify() {
         condVar.notify_one();
     }
 
-    std::vector<Player*> PlayerThreadQueue::getListCopy() const {
+    std::vector<Player*> PlayerThreadLocal::getListCopy() const {
         return this->list;
+    }
+
+    void onCommand(int cmd, std::function<void(Player* player, msg::GameMsgReq const& msg)> callback) {
+        assert(!handlerMap.contains(cmd));
+        handlerMap[cmd] = callback;
+
+#ifdef CyanDragonFishDebug
+        SPDLOG_LOGGER_DEBUG(logConsole, "bind command handler {}", cmd);
+#endif // DEBUG
     }
 
 }

@@ -31,6 +31,7 @@ target_sources(cyanDragonFish PRIVATE
     src/config.cpp
     src/log.cpp
     src/server.cpp
+    src/executor.cpp
 
     ${msgSources}
 )

@@ -8,12 +8,14 @@
 #include "network.h"
 #include <string_view>
 
+#include "executor.h"
 
 namespace cdf {
 
     int launch(std::string_view configPath) {
         initLog();
         logConsole->info("program start!");
+        initExecutor();
         initServer(configPath);
 
         currentServer()->shutdownServer();
