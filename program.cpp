@@ -12,9 +12,9 @@
 
 namespace cdf {
 
-    int launch(std::string_view configPath) {
+    int launch(std::string_view configPath, std::string_view execPath) {
         initLog();
-        logConsole->info("program start!");
+        SPDLOG_INFO("program start!");
         initExecutor();
         initServer(configPath);
 
@@ -25,5 +25,5 @@ namespace cdf {
 }
 
 int main(int argc, const char** argv) {
-    return cdf::launch(argc > 1 ? argv[1] : "./config.yaml");
+    return cdf::launch(argc > 1 ? argv[1] : "./config.yaml", argv[0]);
 }

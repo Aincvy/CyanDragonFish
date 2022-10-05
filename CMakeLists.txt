@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
-SET(CMAKE_MODULE_PATH APPEND "${PROJECT_SOURCE_DIR}/cmake/" )
+SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/" )
+MESSAGE(STATUS "MODULE PATH: ${CMAKE_MODULE_PATH}")
+SET(CMAKE_PREFIX_PATH "/opt/mongo/lib/cmake/")
+MESSAGE(STATUS "PREFIX PATH: ${CMAKE_PREFIX_PATH}")
 
 SET(CyanDragonFishRelease false)
 
@@ -21,6 +24,7 @@ else ()
     set(CMAKE_BUILD_TYPE "Debug")
     target_compile_definitions(cyanDragonFish PUBLIC CyanDragonFishDebug=1)
 endif()
+target_compile_definitions(cyanDragonFish PUBLIC V8_COMPRESS_POINTERS V8_31BIT_SMIS_ON_64BIT_ARCH)
 
 file(GLOB msgSources "src/msg/*.cc")
 MESSAGE(STATUS "protobuf msg: ${msgSources}")
@@ -32,6 +36,7 @@ target_sources(cyanDragonFish PRIVATE
     src/log.cpp
     src/server.cpp
     src/executor.cpp
+    src/js_helper.cpp
 
     ${msgSources}
 )
@@ -49,12 +54,20 @@ find_package(absl REQUIRED)
 
 find_package(protobuf REQUIRED)
 
+# V8
+SET(V8_DIR "/opt/v8")
+find_package(V8 REQUIRED)
+
+find_package(mongocxx REQUIRED)
+find_package(bsoncxx REQUIRED)
+
 target_include_directories(
     cyanDragonFish PRIVATE
     ${PROJECT_SOURCE_DIR}/include
     ${PROJECT_SOURCE_DIR}/include/msg
     ${YAML_CPP_INCLUDE_DIR}
     ${Protobuf_INCLUDE_DIRS}
+    ${V8_INCLUDE_DIR}
 )
 
 SET(EXTRA_LIBS ${YAML_CPP_LIBRARIES} 
@@ -69,6 +82,9 @@ SET(EXTRA_LIBS ${YAML_CPP_LIBRARIES}
     absl::btree       
     absl::random_random
     protobuf::libprotobuf
+    ${V8_LIBRARIES}
+    mongo::bsoncxx_shared
+    mongo::mongocxx_shared
 )
 
 target_link_libraries(cyanDragonFish PRIVATE ${EXTRA_LIBS})

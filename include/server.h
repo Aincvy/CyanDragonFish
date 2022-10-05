@@ -12,6 +12,9 @@
 #include "network.h"
 #include "player.h"
 
+#include <mongocxx/pool.hpp>
+#include <mongocxx/client.hpp>
+
 #define SERVER_VERSION 1
 #define SERVER_VERSION_STR "0.1"
 
@@ -27,8 +30,14 @@ namespace cdf {
         bool isShutdown() const;
         bool isRunning() const;
 
+        mongocxx::pool::entry acquireDbClient();
+
+        void initDatabase();
+
     private:
         std::atomic_bool running = true;
+
+        mongocxx::pool* dbPool = nullptr;
     };
 
 

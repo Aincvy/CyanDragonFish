@@ -24,7 +24,10 @@ namespace cdf {
     };
 
     struct LaunchConfigDatabase {
-
+        // mongodb uri
+        std::string uri = "";
+        // which database ?
+        std::string db = "";
     };
 
     struct LaunchConfig  {

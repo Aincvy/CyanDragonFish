@@ -57,7 +57,28 @@ namespace cdf {
                 config.player.maxOnline = temp.as<uint>();
             }
         }
-        logConsole->info("read config file {} success.", path);
+
+        auto databaseNode = root["database"];
+        if (databaseNode.IsDefined())
+        {
+            auto temp = databaseNode["uri"];
+            if (temp.IsDefined())
+            {
+                config.database.uri = temp.as<std::string>();
+            }
+
+            temp = databaseNode["db"];
+            if (temp.IsDefined()) {
+                config.database.db =  temp.as<std::string>();
+            }
+        }
+
+        if(config.database.uri.empty() || config.database.db.empty()) {
+            SPDLOG_LOGGER_ERROR(logError, "uri or db is empty!");
+            return CODE_CONFIG_DATABASE_ERROR;
+        }
+
+        SPDLOG_INFO("read config file {} success.", path);
         return CODE_OK;
     }
 

@@ -79,6 +79,9 @@ namespace cdf {
 
         std::string debugString() const;
 
+        bool isWriteAble() const;
+        void setWriteAble(bool v);
+
     private: 
         // 
         // uint writeCursor = 0;
@@ -90,6 +93,7 @@ namespace cdf {
 
         int fd = 0;
         struct bufferevent *bev = nullptr;
+        std::atomic_bool writeAble = false;
 
         std::string ipAddress;
         ushort port;
@@ -102,6 +106,7 @@ namespace cdf {
 
         void reset();
         void initBuffer(); 
+
     };
 
 
@@ -128,6 +133,8 @@ namespace cdf {
          * Remove a session.
          */
         bool removeSession(struct bufferevent* bev);
+
+        bool removeSession(NetworkSession* session);
 
         /**
          * 

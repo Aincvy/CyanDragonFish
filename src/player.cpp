@@ -9,6 +9,7 @@
 #include <mutex>
 #include <spdlog/spdlog.h>
 #include <string>
+#include <string_view>
 #include <sys/types.h>
 #include <thread>
 #include <chrono>
@@ -29,8 +30,10 @@ namespace cdf {
 
     namespace {
 
-        void playerLogicThread(PlayerThreadLocal* queue)  {
+        void playerLogicThread(PlayerThreadLocal* threadLocal)  {
             using namespace std::chrono_literals;
+
+            threadLocal->init();
 
             google::protobuf::TextFormat::Printer printer;
             printer.SetSingleLineMode(true);
@@ -38,13 +41,13 @@ namespace cdf {
             auto server = currentServer();
             while (server->isRunning()) {
                 // 
-                if(queue->empty() || !queue->hasMessage()) {
+                if(threadLocal->empty() || !threadLocal->hasMessage()) {
                     // queue->wait();
                     std::this_thread::sleep_for(1ms);
                     continue;
                 }
 
-                auto list = queue->getListCopy();
+                auto list = threadLocal->getListCopy();
                 for (auto item : list) {
                     auto session = item->getSession();
                     int tmpMsgCount = 0;
@@ -108,7 +111,7 @@ namespace cdf {
         auto threadCount = std::max(server->launchConfig.server.logicThreadCount, (ushort)1);
 
         for (int i = 0; i < threadCount; i++) {
-            auto p = new PlayerThreadLocal();
+            auto p = new PlayerThreadLocal(server->acquireDbClient());
             queueMap[i] = p;
 
             auto t = new std::thread(playerLogicThread, p);
@@ -140,6 +143,12 @@ namespace cdf {
         logicThreads.clear();
 
         logConsole->info("playerManager destroy success.");
+    }
+
+    PlayerThreadLocal::PlayerThreadLocal(mongocxx::pool::entry entry)
+        : dbClientEntry(std::move(entry))
+    {
+        
     }
 
     bool PlayerThreadLocal::empty() const {
@@ -176,6 +185,19 @@ namespace cdf {
 
     std::vector<Player*> PlayerThreadLocal::getListCopy() const {
         return this->list;
+    }
+
+    void PlayerThreadLocal::init() {
+        // init a v8 isolate .
+        
+
+        std::string_view dbName = currentServer()->launchConfig.database.db;
+        SPDLOG_INFO("use database {}", dbName);
+        database = dbClientEntry->database(dbName);
+    }
+
+    mongocxx::database& PlayerThreadLocal::getDatabase() {
+        return database;
     }
 
     void onCommand(int cmd, std::function<void(Player* player, msg::GameMsgReq const& msg)> callback) {

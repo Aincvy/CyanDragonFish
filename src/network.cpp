@@ -5,6 +5,7 @@
 #include "common.h"
 #include "server.h"
 #include "spdlog/spdlog.h"
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
@@ -44,6 +45,10 @@ namespace cdf {
                 // write buffer to client
                 for(auto & item: map){
                     auto session = item.second;
+                    if(!session->isWriteAble()) {
+                        continue;
+                    }
+
                     auto buf = session->getWriteBuffer();
                     BufferLockGuard l(buf);
 
@@ -61,7 +66,7 @@ namespace cdf {
         struct evbuffer *in = bufferevent_get_input(bev);
         // evbuffer_write(in, fileno(ctx->fout));
         auto len = evbuffer_get_length(in);
-        logMessage->debug("read_cb: {}", len);
+        // logMessage->debug("read_cb: {}", len);
         if(len > 0){
             auto target = session->getReadBuffer();
             BufferLockGuard l(target);
@@ -73,7 +78,7 @@ namespace cdf {
     static void conn_writecb(struct bufferevent *bev, void *user_data)
     {
         auto* session = (NetworkSession*) user_data;
-        logMessage->debug("conn_writecb...");
+        // logMessage->debug("conn_writecb...");
         // struct evbuffer *output = bufferevent_get_output(bev);
         // if (evbuffer_get_length(output) == 0) {
         //     printf("flushed answer\n");
@@ -84,6 +89,7 @@ namespace cdf {
     static void fd_eventcb(struct bufferevent *bev, short events, void *user_data)
     {
         auto* session = (NetworkSession*) user_data;
+        session->setWriteAble(false);
         if (events & BEV_EVENT_EOF) {
             logMessage->info("session closed {}, playerId: {}, remote address: {}:{}", session->getSessionId(), session->getPlayerId(), session->getIpAddress(), session->getPort());
         } else if (events & BEV_EVENT_ERROR) {
@@ -92,7 +98,7 @@ namespace cdf {
         }
         /* None of the other events can happen here, since we haven't enabled
         * timeouts */
-
+        currentServer()->networkManager.onSessionClosed(bev);
         bufferevent_free(bev);
     }
 
@@ -108,7 +114,7 @@ namespace cdf {
             return;
         }
         
-        logConsole->debug("new connection coming.");
+        SPDLOG_DEBUG("new connection coming.");
         auto networkMgr =  &(currentServer()->networkManager);
         NetworkSession* session = nullptr;
         if((session = currentServer()->networkManager.addNewSession(bev, fd))){
@@ -148,9 +154,9 @@ namespace cdf {
             return;
         }
 
-        logConsole->info("check protobuf version.");
+        SPDLOG_INFO("check protobuf version.");
         GOOGLE_PROTOBUF_VERIFY_VERSION;
-        logConsole->info("check success, protobuf version: {}, v{}", GOOGLE_PROTOBUF_VERSION, google::protobuf::internal::VersionString(GOOGLE_PROTOBUF_VERSION));
+        SPDLOG_INFO("check success, protobuf version: {}, v{}", GOOGLE_PROTOBUF_VERSION, google::protobuf::internal::VersionString(GOOGLE_PROTOBUF_VERSION));
 
         // evthread_use_pthreads();      // ... 
         base = event_base_new();
@@ -165,7 +171,7 @@ namespace cdf {
 	    sin.sin_port = htons(config.port);
         sin.sin_addr = { inet_addr(config.address.c_str()) };
 
-        logConsole->info("try bind to {}:{}", config.address, config.port);
+        SPDLOG_INFO("try bind to {}:{}", config.address, config.port);
 
         listener = evconnlistener_new_bind(base, listener_cb, (void *)base,
 	    LEV_OPT_REUSEABLE|LEV_OPT_CLOSE_ON_FREE, -1,
@@ -181,16 +187,16 @@ namespace cdf {
             exit(CODE_NETWORK_FAILED);
         }
 
-        logConsole->info("try start network-thread");
+        SPDLOG_INFO("try start network-thread");
         networkWriteThread = new std::thread(networkWriteThreadRun);
 
-        logConsole->info("networkManager init success.");
+        SPDLOG_INFO("networkManager init success.");
     }
 
     void NetworkManager::detroy() {
-        logConsole->info("destroy networkManager...");
+        SPDLOG_INFO("destroy networkManager...");
 
-        logConsole->info("wait for network thread shutdown");
+        SPDLOG_INFO("wait for network thread shutdown");
         networkWriteThread->join();
         delete networkWriteThread;
         networkWriteThread = nullptr;
@@ -203,10 +209,10 @@ namespace cdf {
         signal_event = nullptr;
         base = nullptr;
 
-        logConsole->info("destroy google protobuf ");
+        SPDLOG_INFO("destroy google protobuf ");
         google::protobuf::ShutdownProtobufLibrary();
 
-        logConsole->info("destroy networkManager done.");
+        SPDLOG_INFO("destroy networkManager done.");
     }
 
     NetworkSession* NetworkManager::addNewSession(struct bufferevent *bev, int fd) {
@@ -223,6 +229,19 @@ namespace cdf {
 
     bool NetworkManager::removeSession(struct bufferevent* bev) {
         auto result = sessionMap.find(bev);
+        if(result != sessionMap.end()){
+            SPDLOG_LOGGER_INFO(logMessage, "remove session: {}", result->second->debugString());
+            delete result->second;
+            sessionMap.erase(result);
+            return true;
+        }
+        return false;
+    }
+
+    bool NetworkManager::removeSession(NetworkSession* session) {
+        auto result = std::find_if(sessionMap.begin(), sessionMap.end(), [session](auto const& item){
+            return item.second == session;
+        });
         if(result != sessionMap.end()){
             SPDLOG_LOGGER_INFO(logMessage, "remove session: {}", result->second->debugString());
             delete result->second;
@@ -376,6 +395,14 @@ namespace cdf {
         return absl::Substitute("$0,playerId: $1, remote address: $2:$3", sessionId, playerId, ipAddress, port);
     }
 
+    bool NetworkSession::isWriteAble() const {
+        return writeAble;
+    }
+
+    void NetworkSession::setWriteAble(bool v) {
+        writeAble = v;
+    }
+
     void NetworkSession::reset() {
         
         if(readBuffer) {
@@ -391,12 +418,12 @@ namespace cdf {
     void NetworkSession::initBuffer() {
         if(!readBuffer){
             readBuffer = evbuffer_new();
-            evbuffer_enable_locking(readBuffer, nullptr);
+            // evbuffer_enable_locking(readBuffer, nullptr);
         }
         
         if(!writeBuffer){
             writeBuffer = evbuffer_new();
-            evbuffer_enable_locking(writeBuffer, nullptr);
+            // evbuffer_enable_locking(writeBuffer, nullptr);
         }
         
     }
@@ -404,12 +431,12 @@ namespace cdf {
     BufferLockGuard::BufferLockGuard(struct evbuffer* buf)
         : buf(buf)
     {
-        evbuffer_lock(buf);
+        // evbuffer_lock(buf);
     }
 
     BufferLockGuard::~BufferLockGuard()
     {
-        evbuffer_unlock(buf);
+        // evbuffer_unlock(buf);
     }
 
 }

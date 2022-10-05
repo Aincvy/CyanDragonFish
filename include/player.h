@@ -17,6 +17,13 @@
 
 #include "gameMsg.pb.h"
 
+#include <v8.h>
+
+#include <mongocxx/client.hpp>
+#include <mongocxx/database.hpp>
+#include <mongocxx/pool.hpp>
+
+
 namespace cdf {
 
     struct PlayerThreadLocal;
@@ -54,6 +61,8 @@ namespace cdf {
      */
     struct PlayerThreadLocal {
         
+        PlayerThreadLocal(mongocxx::pool::entry entry);
+
         bool empty() const;
 
         bool hasMessage() const;
@@ -66,11 +75,18 @@ namespace cdf {
 
         std::vector<Player*> getListCopy() const;    
 
+        void init();
+
+        mongocxx::database& getDatabase();
+
     private:
         std::vector<Player*> list;
         std::mutex listMutex; 
         std::condition_variable condVar;
+        v8::Isolate* isolate = nullptr;
 
+        mongocxx::pool::entry dbClientEntry;
+        mongocxx::database database;
     };
 
     struct PlayerManager {

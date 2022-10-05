@@ -5,3 +5,6 @@ server:
   logic-thread-count: 2
 player:
   maxOnline: 20
+database:
+  uri: mongodb://debian.mylab:27017
+  db: cdf
