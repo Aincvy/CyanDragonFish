@@ -14,12 +14,12 @@
 #include <thread>
 #include <chrono>
 
-#include "gameMsg.pb.h"
-#include "command.pb.h"
+#include "js_helper.h"
 
 #include <google/protobuf/text_format.h>
 
 #include <absl/container/flat_hash_map.h>
+#include <vector>
 
 namespace cdf {
 
@@ -47,7 +47,7 @@ namespace cdf {
                     continue;
                 }
 
-                auto list = threadLocal->getListCopy();
+                auto& list = threadLocal->getList();
                 for (auto item : list) {
                     auto session = item->getSession();
                     int tmpMsgCount = 0;
@@ -87,12 +87,18 @@ namespace cdf {
         return this->session;
     }
 
+    void Player::setSession(NetworkSession* session) {
+        this->session = session;
+    }
+
     uint Player::getPlayerId() const {
         return this->playerId;
     }
 
     void Player::write(int cmd, int errorCode, google::protobuf::Message* message) {
-        session->write(cmd, errorCode, message);
+        if (session) {
+            session->write(cmd, errorCode, message);    
+        }
     }
 
     void Player::setPlayerThread(PlayerThreadLocal* threadLocal) {
@@ -145,6 +151,17 @@ namespace cdf {
         logConsole->info("playerManager destroy success.");
     }
 
+    void PlayerManager::removePlayer(NetworkSession* session) {
+        auto playerId = session->getPlayerId();
+        if (playerId > 0) {
+            // lock ?
+            playerMap.erase(playerId);
+        }
+
+        auto index = session->getSessionId() % queueMap.size();
+        queueMap.at(index)->removePlayer(session);
+    }
+
     PlayerThreadLocal::PlayerThreadLocal(mongocxx::pool::entry entry)
         : dbClientEntry(std::move(entry))
     {
@@ -174,6 +191,18 @@ namespace cdf {
         p->setPlayerThread(this);
     }
 
+    void PlayerThreadLocal::removePlayer(NetworkSession* session) {
+        for (auto it = list.begin(); it != list.end(); it++) {
+            auto player = *it;
+            if (player->getSession() == session)
+            {
+                player->setSession(nullptr);
+                list.erase(it);
+                break;
+            }
+        }
+    }
+
     void PlayerThreadLocal::wait() {
         std::unique_lock<std::mutex> l(this->listMutex);
         condVar.wait(l);
@@ -187,13 +216,29 @@ namespace cdf {
         return this->list;
     }
 
-    void PlayerThreadLocal::init() {
-        // init a v8 isolate .
-        
+    std::vector<Player*>& PlayerThreadLocal::getList() {
+        return this->list;
+    }
 
+    std::mutex& PlayerThreadLocal::getListMutex() {
+        return listMutex;
+    }
+
+    void PlayerThreadLocal::init() {
         std::string_view dbName = currentServer()->launchConfig.database.db;
         SPDLOG_INFO("use database {}", dbName);
         database = dbClientEntry->database(dbName);
+
+        // init a v8 isolate .
+        v8::Isolate::CreateParams createParams;
+        createParams.array_buffer_allocator =
+                v8::ArrayBuffer::Allocator::NewDefaultAllocator();
+        this->isolate = v8::Isolate::New(createParams);
+
+        registerDomain(this->isolate);
+        registerDatabaseOpr(this->isolate, this);
+        registerUtilFunctions(this->isolate);
+
     }
 
     mongocxx::database& PlayerThreadLocal::getDatabase() {

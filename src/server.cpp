@@ -10,11 +10,16 @@
 #include <mongocxx/uri.hpp>
 #include <spdlog/spdlog.h>
 
+#include "util.h"
+#include "domain.h"
+
 namespace cdf {
 
     static Server* g_server = nullptr;
 
     int initServer(std::string_view configPath) {
+        SPDLOG_DEBUG("start time: {}", currentTime());
+
         g_server = new Server();
         if(!configPath.empty()){
             int c = loadConfig(configPath);
@@ -28,7 +33,7 @@ namespace cdf {
         g_server->initDatabase();
         g_server->networkManager.init();
         g_server->playerManager.init();
-
+        initPlayerId(g_server->acquireDbClient());
         flushLog();
 
         g_server->networkManager.serv();

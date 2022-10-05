@@ -38,6 +38,7 @@ namespace cdf {
         void login();
 
         NetworkSession* getSession() const;
+        void setSession(NetworkSession* session);
 
         uint getPlayerId() const;
 
@@ -69,15 +70,22 @@ namespace cdf {
 
         void addPlayer(Player* p);
 
+        void removePlayer(NetworkSession* session);
+
         void wait();
 
         void notify();
 
         std::vector<Player*> getListCopy() const;    
 
+        std::vector<Player*>& getList();
+        std::mutex& getListMutex();
+
         void init();
 
         mongocxx::database& getDatabase();
+
+
 
     private:
         std::vector<Player*> list;
@@ -99,10 +107,16 @@ namespace cdf {
 
         void destroy();
 
+        /**
+         * remove player from session.  delete memory. 
+         */
+        void removePlayer(NetworkSession* session);
+
     private:
         absl::flat_hash_map<uint, Player*> playerMap;
+        // key sessionId-related.
         absl::flat_hash_map<uint, PlayerThreadLocal*> queueMap;
-
+        
         std::vector<std::thread*> logicThreads;
 
         bool initFlag = false;

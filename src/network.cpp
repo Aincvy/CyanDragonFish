@@ -19,6 +19,7 @@
 #include <google/protobuf/text_format.h>
 #include <mutex>
 #include <netinet/in.h>
+#include <shared_mutex>
 #include <signal.h>
 
 #include <sstream>
@@ -31,6 +32,8 @@
 #include <absl/random/random.h>
 #include <absl/strings/substitute.h>
 
+#include "util.h"
+
 namespace cdf {
     
     using namespace msg;
@@ -41,20 +44,38 @@ namespace cdf {
 
             auto server = currentServer();
             while (server->isRunning()) {
-                auto map = server->networkManager.getSessionMapCopy();
-                // write buffer to client
-                for(auto & item: map){
-                    auto session = item.second;
-                    if(!session->isWriteAble()) {
-                        continue;
+                auto now = currentTime(); 
+                {
+                    std::shared_lock<std::shared_mutex> l(server->networkManager.getSessionMapMutex());
+                    auto& map = server->networkManager.getSessionMap();
+                    // write buffer to client
+                    for(auto & item: map){
+                        auto session = item.second;
+                        if (session->isClosed())
+                        {
+                            // 
+                            if (now - session->getCloseTime() > 5 * 60 * 1000) {
+                                // remove 
+                                server->networkManager.removeSession(session);
+                            }
+
+                            continue;
+                        }
+                        if(!session->isWriteAble()) {
+                            continue;
+                        }
+
+                        auto buf = session->getWriteBuffer();
+                        BufferLockGuard l(buf);
+
+                        auto len = evbuffer_get_length(buf);
+                        if (len > 0) {
+                            logMessage->debug("write bytes({}) to {}", len, session->debugString());
+                            evbuffer_write(buf, session->getFd());
+                        }
                     }
-
-                    auto buf = session->getWriteBuffer();
-                    BufferLockGuard l(buf);
-
-                    evbuffer_write(buf, session->getFd());
                 }
-
+                
                 std::this_thread::sleep_for(1ms);
             }
         }
@@ -64,9 +85,8 @@ namespace cdf {
     {
         auto* session = (NetworkSession*) arg;
         struct evbuffer *in = bufferevent_get_input(bev);
-        // evbuffer_write(in, fileno(ctx->fout));
+        
         auto len = evbuffer_get_length(in);
-        // logMessage->debug("read_cb: {}", len);
         if(len > 0){
             auto target = session->getReadBuffer();
             BufferLockGuard l(target);
@@ -78,6 +98,8 @@ namespace cdf {
     static void conn_writecb(struct bufferevent *bev, void *user_data)
     {
         auto* session = (NetworkSession*) user_data;
+        session->setWriteAble(true);
+
         // logMessage->debug("conn_writecb...");
         // struct evbuffer *output = bufferevent_get_output(bev);
         // if (evbuffer_get_length(output) == 0) {
@@ -98,8 +120,8 @@ namespace cdf {
         }
         /* None of the other events can happen here, since we haven't enabled
         * timeouts */
-        currentServer()->networkManager.onSessionClosed(bev);
-        bufferevent_free(bev);
+        session->close();
+        session->freeConnection();
     }
 
     static void listener_cb(struct evconnlistener *, evutil_socket_t fd,
@@ -123,6 +145,7 @@ namespace cdf {
             inet_ntop (AF_INET, &sin->sin_addr, ip, sizeof (ip));
             session->setAddressInfo(ip, htons(sin->sin_port));
             logMessage->info("session created: {}, remote address: {}:{}", session->getSessionId(), session->getIpAddress(), session->getPort());
+            session->open();
 
             currentServer()->playerManager.createPlayer(session);
             bufferevent_setcb(bev, read_cb, conn_writecb, fd_eventcb, session);
@@ -220,7 +243,7 @@ namespace cdf {
             return nullptr;
         }
 
-        // std::lock_guard<std::mutex> guard(this->sessionMapMutex);
+        std::unique_lock<std::shared_mutex> guard(this->sessionMapMutex);
         
         auto s = new NetworkSession(bev, fd, ++ sessionIdIncr);
         sessionMap[bev] = s;
@@ -229,45 +252,50 @@ namespace cdf {
 
     bool NetworkManager::removeSession(struct bufferevent* bev) {
         auto result = sessionMap.find(bev);
-        if(result != sessionMap.end()){
-            SPDLOG_LOGGER_INFO(logMessage, "remove session: {}", result->second->debugString());
-            delete result->second;
-            sessionMap.erase(result);
-            return true;
-        }
-        return false;
+        return removeSession(result);
     }
 
     bool NetworkManager::removeSession(NetworkSession* session) {
         auto result = std::find_if(sessionMap.begin(), sessionMap.end(), [session](auto const& item){
             return item.second == session;
         });
+        
+        return removeSession(result);
+    }
+
+    absl::flat_hash_map<struct bufferevent *, NetworkSession*>& NetworkManager::getSessionMap() {
+        return this->sessionMap;
+    }
+
+    std::shared_mutex& NetworkManager::getSessionMapMutex() {
+        return sessionMapMutex;
+    }
+
+    bool NetworkManager::removeSession(absl::flat_hash_map<struct bufferevent *, NetworkSession*>::iterator result) {
         if(result != sessionMap.end()){
-            SPDLOG_LOGGER_INFO(logMessage, "remove session: {}", result->second->debugString());
-            delete result->second;
+            std::unique_lock<std::shared_mutex> l(sessionMapMutex);
+
+            auto session = result->second;
+            SPDLOG_LOGGER_INFO(logMessage, "remove session: {}", session->debugString());
+            currentServer()->playerManager.removePlayer(session);
+            delete session;
             sessionMap.erase(result);
             return true;
         }
         return false;
     }
 
-    void NetworkManager::onSessionClosed(struct  bufferevent* bev, int reason) {
-        removeSession(bev);
-    }
-
-    absl::flat_hash_map<struct bufferevent *, NetworkSession*> NetworkManager::getSessionMapCopy() {
-        return this->sessionMap;
-    }
-
     NetworkSession::NetworkSession(int sessionId) : sessionId(sessionId)
     {
         initBuffer();
+        openFlag = true;
     }
 
     NetworkSession::NetworkSession(struct bufferevent *bev, int fd, int sessionId)
         : bev(bev), fd(fd), sessionId(sessionId)
     {
         initBuffer();
+        openFlag = true;
     }
 
     NetworkSession::~NetworkSession()
@@ -300,12 +328,28 @@ namespace cdf {
         } else {
             logMessage->debug("Send To {},[CEV]: {} {} {}", playerId, cmd, errorCode, message->GetTypeName());
         }
-        
+        if (!writeAble) {
+            logMessage->debug("Session from playerId({}) is not writeable, msg maybe not arrived. ", playerId);
+        }
+
         write(msg);
     }
 
     void NetworkSession::close(int reason) {
-        currentServer()->networkManager.onSessionClosed(this->bev, reason);
+        SPDLOG_LOGGER_DEBUG(logMessage, "session close: {}", debugString());
+
+        closeTime = currentTime();
+        closedFlag = true;
+        writeAble = false;
+        openFlag = false;
+    }
+
+    void NetworkSession::open() {
+        SPDLOG_LOGGER_DEBUG(logMessage, "session open, fd: {}", fd);
+
+        closedFlag = false;
+        openFlag = true;
+        closeTime = 0;
     }
 
     void NetworkSession::setAddressInfo(std::string_view ip, ushort port) {
@@ -403,6 +447,27 @@ namespace cdf {
         writeAble = v;
     }
 
+    void NetworkSession::freeConnection() {
+        if (bev) {
+            bufferevent_free(bev);
+            bev = nullptr;
+        }
+
+        fd = 0;
+    }
+
+    bool NetworkSession::isClosed() const {
+        return closedFlag;
+    }
+
+    bool NetworkSession::isOpen() const {
+        return openFlag;
+    }
+
+    long NetworkSession::getCloseTime() const {
+        return closeTime;
+    }
+
     void NetworkSession::reset() {
         
         if(readBuffer) {
@@ -413,17 +478,19 @@ namespace cdf {
         }
         readBuffer = nullptr;
         writeBuffer = nullptr;
+
+        freeConnection();
     }
 
     void NetworkSession::initBuffer() {
         if(!readBuffer){
             readBuffer = evbuffer_new();
-            // evbuffer_enable_locking(readBuffer, nullptr);
+            evbuffer_enable_locking(readBuffer, nullptr);
         }
         
         if(!writeBuffer){
             writeBuffer = evbuffer_new();
-            // evbuffer_enable_locking(writeBuffer, nullptr);
+            evbuffer_enable_locking(writeBuffer, nullptr);
         }
         
     }
@@ -431,12 +498,12 @@ namespace cdf {
     BufferLockGuard::BufferLockGuard(struct evbuffer* buf)
         : buf(buf)
     {
-        // evbuffer_lock(buf);
+        evbuffer_lock(buf);
     }
 
     BufferLockGuard::~BufferLockGuard()
     {
-        // evbuffer_unlock(buf);
+        evbuffer_unlock(buf);
     }
 
 }

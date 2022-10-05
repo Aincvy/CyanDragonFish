@@ -6,7 +6,12 @@ MESSAGE(STATUS "PREFIX PATH: ${CMAKE_PREFIX_PATH}")
 
 SET(CyanDragonFishRelease false)
 
-project(cyanDragonFish)
+project(cyanDragonFish
+    VERSION 0.0.1
+    DESCRIPTION "A WIP Game."
+    HOMEPAGE_URL https://github.com/Aincvy/CyanDragonFish.git
+    LANGUAGES CXX
+)
 
 # specify the C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -37,6 +42,8 @@ target_sources(cyanDragonFish PRIVATE
     src/server.cpp
     src/executor.cpp
     src/js_helper.cpp
+    src/util.cpp
+    src/domain.cpp
 
     ${msgSources}
 )
@@ -61,6 +68,9 @@ find_package(V8 REQUIRED)
 find_package(mongocxx REQUIRED)
 find_package(bsoncxx REQUIRED)
 
+
+add_subdirectory(dependencies/v8pp)
+
 target_include_directories(
     cyanDragonFish PRIVATE
     ${PROJECT_SOURCE_DIR}/include
@@ -81,10 +91,13 @@ SET(EXTRA_LIBS ${YAML_CPP_LIBRARIES}
     absl::flat_hash_set
     absl::btree       
     absl::random_random
+    absl::time
+
     protobuf::libprotobuf
     ${V8_LIBRARIES}
     mongo::bsoncxx_shared
     mongo::mongocxx_shared
+    v8pp
 )
 
 target_link_libraries(cyanDragonFish PRIVATE ${EXTRA_LIBS})

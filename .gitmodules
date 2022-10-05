@@ -1,0 +1,3 @@
+[submodule "dependencies/v8pp"]
+	path = dependencies/v8pp
+	url = https://github.com/pmed/v8pp.git

@@ -5,6 +5,7 @@
 #pragma once
 
 #include <mutex>
+#include <shared_mutex>
 #include <string>
 #include <string_view>
 #include <sys/types.h>
@@ -52,6 +53,8 @@ namespace cdf {
 
         void close(int reason = 0);
 
+        void open(); 
+
         void setAddressInfo(std::string_view ip, ushort port);
 
         std::string_view getIpAddress() const;
@@ -82,18 +85,27 @@ namespace cdf {
         bool isWriteAble() const;
         void setWriteAble(bool v);
 
-    private: 
-        // 
-        // uint writeCursor = 0;
-        // char* readBuffer[BUFFER_SIZE] = {0};
-        // char* writeBuffer[BUFFER_SIZE] = {0};
+        /**
+         * free low-level connection (fd or libevent)
+         */
+        void freeConnection();
 
+        bool isClosed() const;
+        bool isOpen() const;
+        long getCloseTime() const;
+
+    private: 
+        
         struct evbuffer* readBuffer = nullptr;
         struct evbuffer* writeBuffer = nullptr;
 
         int fd = 0;
         struct bufferevent *bev = nullptr;
         std::atomic_bool writeAble = false;
+        std::atomic_bool openFlag = false;
+        std::atomic_bool closedFlag = true;
+        // session closed time.
+        long closeTime = 0L;
 
         std::string ipAddress;
         ushort port;
@@ -136,12 +148,9 @@ namespace cdf {
 
         bool removeSession(NetworkSession* session);
 
-        /**
-         * 
-         */
-        void onSessionClosed(struct bufferevent* bev, int reason = 0);
+        absl::flat_hash_map<struct bufferevent *, NetworkSession*>& getSessionMap();
 
-        absl::flat_hash_map<struct bufferevent *, NetworkSession*> getSessionMapCopy();
+        std::shared_mutex& getSessionMapMutex();
 
     private:
         struct event_base *base;
@@ -150,10 +159,12 @@ namespace cdf {
         struct sockaddr_in sin;
 
         absl::flat_hash_map<struct bufferevent *, NetworkSession*> sessionMap;
-        std::mutex sessionMapMutex;    // mutex for session map.
+        std::shared_mutex sessionMapMutex;    // mutex for session map.
         std::atomic_int sessionIdIncr = 10000;
 
         std::thread* networkWriteThread = nullptr;
+
+        bool removeSession(absl::flat_hash_map<struct bufferevent *, NetworkSession*>::iterator result);
     };
 
 }

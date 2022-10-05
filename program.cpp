@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include "executor.h"
+#include "js_helper.h"
 
 namespace cdf {
 
@@ -16,6 +17,7 @@ namespace cdf {
         initLog();
         SPDLOG_INFO("program start!");
         initExecutor();
+        initJsEngine(execPath);
         initServer(configPath);
 
         currentServer()->shutdownServer();
