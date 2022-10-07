@@ -15,16 +15,19 @@ namespace cdf {
     spdlog::logger* logError;
     spdlog::logger* logMessage;
     spdlog::logger* logService;
+    spdlog::logger* logScript;
 
-    std::shared_ptr<spdlog::sinks::stderr_color_sink_mt> console_err_sink = nullptr;
-    std::shared_ptr<spdlog::sinks::rotating_file_sink_mt> error_file_sink = nullptr;
+    static std::shared_ptr<spdlog::sinks::stderr_color_sink_mt> console_err_sink = nullptr;
+    static std::shared_ptr<spdlog::sinks::rotating_file_sink_mt> error_file_sink = nullptr;
+    static std::shared_ptr<spdlog::sinks::stdout_color_sink_mt> console_sink = nullptr;
+
 
     void initConsoleLog() {
-        auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+        console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
         auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>("logs/console.log", 1048576 * 5, 3);
 
         logConsole = new spdlog::logger("console", {console_sink, fileSink});
-        logConsole->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%s:%#(%!)] [%t] [%^%l%$] %v");
+        logConsole->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%t] [%^%l%$] [%s:%#(%!)] %v");
 
 #ifdef CyanDragonFishDebug
         console_sink->set_level(spdlog::level::debug);
@@ -46,7 +49,7 @@ namespace cdf {
         error_file_sink->set_level(spdlog::level::err);
 
         logError = new spdlog::logger("error", {console_err_sink, error_file_sink});
-        logError->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%s:%#(%!)] [%t] [%^%l%$] %v");
+        logError->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%t] [%^%l%$] [%s:%#(%!)] %v");
     }
 
     void initMessageLog() {
@@ -54,11 +57,27 @@ namespace cdf {
         fileSink->set_level(spdlog::level::debug);
 
         logMessage = new spdlog::logger("message", {fileSink,  console_err_sink, error_file_sink});
-        logMessage->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%s:%#(%!)] [%t] [%^%l%$] %v");
+        logMessage->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%t] [%^%l%$] [%s:%#(%!)] %v");
 
 #ifdef CyanDragonFishDebug
         logMessage->set_level(spdlog::level::debug);
         logMessage->flush_on(spdlog::level::debug);
+#else
+
+#endif // CyanDragonFishDebug
+
+    }
+
+    void initScriptLog() {
+        auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>("logs/script.log", 1048576 * 5, 3);
+        fileSink->set_level(spdlog::level::debug);
+
+        logScript = new spdlog::logger("script", {console_sink, fileSink });
+        logScript->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%t] [%^%l%$] %v");
+
+#ifdef CyanDragonFishDebug
+        logScript->set_level(spdlog::level::debug);
+        logScript->flush_on(spdlog::level::debug);
 #else
 
 #endif // CyanDragonFishDebug
@@ -74,6 +93,7 @@ namespace cdf {
 
         initErrorLog();
         initMessageLog();
+        initScriptLog();
     }
 
     void flushLog() {

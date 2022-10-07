@@ -30,10 +30,17 @@ namespace cdf {
         std::string db = "";
     };
 
+    struct LaunchConfigPath {
+        std::string js;
+    };
+
     struct LaunchConfig  {
         LaunchConfigServer server;
         LaunchConfigPlayer player;
         LaunchConfigDatabase database;
+        LaunchConfigPath path;
+
+        std::string jsPath(std::string_view filename) const;
     };
 
     int loadConfig(std::string_view path);

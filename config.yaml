@@ -8,3 +8,5 @@ player:
 database:
   uri: mongodb://debian.mylab:27017
   db: cdf
+path:
+  js: '/home/alias/Projects/CyanDragonFish/javascripts'

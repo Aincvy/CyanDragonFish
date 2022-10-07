@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cassert>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <spdlog/spdlog.h>
 #include <string>
@@ -34,11 +35,24 @@ namespace cdf {
             using namespace std::chrono_literals;
 
             threadLocal->init();
+            auto server = currentServer();
+            
+            // v8 things.
+            auto isolate = threadLocal->getIsolate();
+            v8::HandleScope handleScope(isolate);
+            auto context = v8::Context::New(isolate);
+            v8::Context::Scope contextScope(context);
+            registerUtilFunctions(isolate);
+            loadJsFiles(isolate, server->launchConfig.jsPath("lib/"));
+            registerDomain(isolate);
+            registerDatabaseOpr(isolate);
+            loadJsFile(isolate, server->launchConfig.jsPath("prelib.js"));
+            registerDatabaseObject(isolate, threadLocal);
+            loadJsFile(isolate, server->launchConfig.jsPath("postlib.js"));
 
             google::protobuf::TextFormat::Printer printer;
             printer.SetSingleLineMode(true);
 
-            auto server = currentServer();
             while (server->isRunning()) {
                 // 
                 if(threadLocal->empty() || !threadLocal->hasMessage()) {
@@ -234,15 +248,15 @@ namespace cdf {
         createParams.array_buffer_allocator =
                 v8::ArrayBuffer::Allocator::NewDefaultAllocator();
         this->isolate = v8::Isolate::New(createParams);
-
-        registerDomain(this->isolate);
-        registerDatabaseOpr(this->isolate, this);
-        registerUtilFunctions(this->isolate);
-
+        this->isolateScope = std::make_unique<v8::Isolate::Scope>(this->isolate);
     }
 
     mongocxx::database& PlayerThreadLocal::getDatabase() {
         return database;
+    }
+
+    v8::Isolate* PlayerThreadLocal::getIsolate() {
+        return isolate;
     }
 
     void onCommand(int cmd, std::function<void(Player* player, msg::GameMsgReq const& msg)> callback) {

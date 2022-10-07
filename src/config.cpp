@@ -3,6 +3,7 @@
 #include "server.h"
 
 #include "yaml-cpp/yaml.h"
+#include <sstream>
 #include <string>
 #include <yaml-cpp/node/parse.h>
 #include <yaml-cpp/parser.h>
@@ -78,8 +79,23 @@ namespace cdf {
             return CODE_CONFIG_DATABASE_ERROR;
         }
 
+        auto pathNode = root["path"];
+        if (pathNode.IsDefined()) {
+            auto temp = pathNode["js"];
+            if (temp.IsDefined()) {
+                config.path.js = temp.as<std::string>();
+            }
+        }
+
         SPDLOG_INFO("read config file {} success.", path);
+        SPDLOG_INFO("using javascripts folder: {}", config.path.js);
         return CODE_OK;
+    }
+
+    std::string LaunchConfig::jsPath(std::string_view filename) const {
+        std::stringstream ss;
+        ss << path.js << "/" << filename;
+        return ss.str();
     }
 
 }

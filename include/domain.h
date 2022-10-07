@@ -10,24 +10,31 @@
 
 namespace cdf {
 
-    struct Account {
+    struct Entity {
+        std::string _id;
+        long createTime;
+        // last update time
+        long updateTime;  
+    };
+
+    struct Account: Entity {
         std::string id;
         std::string username;
         // sha256
         std::string password;
         std::string salt;
-        long createTime;
         long lastLoginTime;
     };
 
-    struct Role {
+    struct Role: Entity {
+        std::string accountId;
         uint playerId = 0; 
         std::string nickname = "";
         uint level = 0;
         uint exp = 0;
     };
 
-    struct Item {
+    struct Item : Entity {
         uint playerId = 0;
         uint itemId = 0;
         uint count = 0;

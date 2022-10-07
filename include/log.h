@@ -17,6 +17,7 @@ namespace cdf {
     extern spdlog::logger* logError;
     extern spdlog::logger* logMessage;
     extern spdlog::logger* logService;
+    extern spdlog::logger* logScript;
 
     void initLog();
     

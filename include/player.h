@@ -5,6 +5,7 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 #include <sys/types.h>
 #include <thread>
 #include <vector>
@@ -85,13 +86,14 @@ namespace cdf {
 
         mongocxx::database& getDatabase();
 
-
+        v8::Isolate* getIsolate();
 
     private:
         std::vector<Player*> list;
         std::mutex listMutex; 
         std::condition_variable condVar;
         v8::Isolate* isolate = nullptr;
+        std::unique_ptr<v8::Isolate::Scope> isolateScope = nullptr;
 
         mongocxx::pool::entry dbClientEntry;
         mongocxx::database database;
