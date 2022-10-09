@@ -5,6 +5,7 @@
 #include <fmt/format.h>
 #include <iterator>
 #include <mongocxx/cursor.hpp>
+#include <ostream>
 #include <spdlog/spdlog.h>
 
 #include <sstream>
@@ -17,8 +18,9 @@
 #include <libplatform/libplatform.h>
 
 #include "domain.h"
-
 #include "util.h"
+#include "player.h"
+
 #include "v8pp/convert.hpp"
 #include "v8pp/function.hpp"
 #include <v8pp/class.hpp>
@@ -180,7 +182,6 @@ namespace cdf {
         v8pp::class_<Account> accountClass(isolate);
         accountClass.ctor<>()
             .inherit<Entity>()
-            .var("id", &Account::id)    
             .var("username", &Account::username)    
             .var("password", &Account::password)    
             .var("salt", &Account::salt)    
@@ -244,7 +245,7 @@ namespace cdf {
         context->Global()->Set(context, v8pp::to_v8(isolate, "db"), db).ToChecked();
     }
 
-    void registerUtilFunctions(v8::Isolate* isolate) {
+    void registerUtilFunctions(v8::Isolate* isolate, PlayerThreadLocal* threadLocal) {
         SPDLOG_DEBUG("register util functions to {:p}", fmt::ptr(isolate));
 
         auto context = isolate->GetCurrentContext();
@@ -256,16 +257,26 @@ namespace cdf {
         auto currentTimeFunc = v8pp::wrap_function(isolate, "currentTime", currentTime);
         global->Set(context, v8pp::to_v8(isolate, "currentTime"), currentTimeFunc).ToChecked();
 
+        auto randomStringFunc = v8pp::wrap_function(isolate, "randomString", randomString);
+        global->Set(context, v8pp::to_v8(isolate, "randomString"), randomStringFunc).ToChecked();
+
+        auto registerService = [isolate, threadLocal](std::string_view key, v8::Local<v8::Function> f) {
+            SPDLOG_DEBUG("register service function: {}", key);
+            auto func =  V8Function(isolate, f);
+            threadLocal->getServiceFuncMap()[key] = func;
+        };
+        auto registerServiceFunc = v8pp::wrap_function(isolate, "registerService", registerService);
+        global->Set(context, v8pp::to_v8(isolate, "registerService"), registerServiceFunc).ToChecked();
+
     }
 
     void loadJsFiles(v8::Isolate* isolate, std::string_view folder) {
-        SPDLOG_DEBUG("load all js files to {:p}", fmt::ptr(isolate));
+        SPDLOG_DEBUG("load js files({}) to {:p}", folder, fmt::ptr(isolate));
 
         absl::flat_hash_set<std::string> ignoreFiles;
         ignoreFiles.insert("prelib.js");
         ignoreFiles.insert("postlib.js");
         
-
         namespace fs = std::filesystem;
         for(const auto& item: fs::directory_iterator(folder)) {
             if (!item.is_regular_file())
@@ -289,20 +300,59 @@ namespace cdf {
 
     void reportException(v8::Isolate* isolate, std::string_view path, v8::TryCatch const& tryCatch) {
         auto exception = tryCatch.Exception();
-        std::string s;
+        std::stringstream ss;
         auto context = isolate->GetCurrentContext();
-        if (exception->IsString() || exception->IsStringObject()) {
-            s = v8pp::from_v8<std::string>(isolate, tryCatch.Exception());
+        auto message = tryCatch.Message();
+        if (!message.IsEmpty())
+        {
+            
+            auto resourceName = message->GetScriptResourceName();
+            auto lineNumber = message->GetLineNumber(context).ToChecked();
+
+            ss << "[";
+            if (!resourceName.IsEmpty() &&  (resourceName->IsString() || resourceName->IsStringObject())) {
+                ss << v8pp::from_v8<std::string_view>(isolate, resourceName);
+            }
+            ss << ":" << lineNumber;
+            ss <<  "] ";
+            if (exception->IsString() || exception->IsStringObject()) {
+                ss << v8pp::from_v8<std::string>(isolate, tryCatch.Exception());
+            }
+            ss << std::endl;
+
+            auto sourceLine = message->GetSourceLine(context).ToLocalChecked();
+            if (sourceLine->IsString() || sourceLine->IsStringObject()) {
+                ss << v8pp::from_v8<std::string>(isolate, sourceLine) << std::endl;
+            } else {
+                ss << "no-source-line" << std::endl;
+            }
+
+            int start = message->GetStartColumn(context).FromJust();
+            for (int i = 0; i < start; i++) {
+                ss << " ";
+            }
+            int end = message->GetEndColumn(context).FromJust();
+            for (int i = start; i < end; i++) {
+                ss << "^";
+            }
+
+            ss << std::endl;
+            auto stackMessage = tryCatch.StackTrace(context).ToLocalChecked();
+            if (!stackMessage.IsEmpty() &&( stackMessage->IsString() || stackMessage->IsStringObject())) {
+                ss << v8pp::from_v8<std::string>(isolate, stackMessage) << std::endl;
+            }
+
+        } else if (exception->IsString() || exception->IsStringObject()) {
+            ss << v8pp::from_v8<std::string>(isolate, tryCatch.Exception());
         } else if (exception->IsObject())
         {
-            s = v8pp::from_v8<std::string>(isolate, JSON::Stringify(context, exception).ToLocalChecked());
+            ss << v8pp::from_v8<std::string>(isolate, JSON::Stringify(context, exception).ToLocalChecked());
             SPDLOG_ERROR("exception not handle[object]");
         } else {
             SPDLOG_ERROR("exception not handle");
         }
         
-        SPDLOG_LOGGER_ERROR(logError, "path: {}, message: {}",path, s);    
-        
+        SPDLOG_LOGGER_ERROR(logError, "path: {}, message: {}",path, ss.str());    
     }
 
     void loadJsFile(v8::Isolate* isolate, std::string_view path) {
@@ -337,7 +387,7 @@ namespace cdf {
         auto recv = Object::New(isolate);
         auto exports = Object::New(isolate);
         auto module = Object::New(isolate);
-        module->Set(context, v8pp::to_v8(isolate, "exports"), exports).ToChecked();
+        module->Set(context, paramExports, exports).ToChecked();
         
         v8pp::call_v8(isolate, func, recv, module, exports);
 
@@ -346,18 +396,49 @@ namespace cdf {
         } else {
             // register exports to global
             auto g = context->Global();
+            auto exports = module->Get(context, paramExports).ToLocalChecked().As<Object>();
             auto names = exports->GetOwnPropertyNames(context).ToLocalChecked();
-            SPDLOG_DEBUG("names length:  {}", names->Length());
-            for (uint i = 0; i < names->Length(); i++)
-            {
-                auto name = names->Get(context, i).ToLocalChecked();
-                auto v = exports->Get(context, name).ToLocalChecked();
-                if (name->IsString() || name->IsStringObject()) {
-                    auto nameString = v8pp::from_v8<std::string>(isolate, name);
-                    SPDLOG_DEBUG(nameString);
+            if (names->Length() > 0) {
+                // module import
+                auto mayName = module->Get(context, v8pp::to_v8(isolate, "name"));
+                if (!mayName.IsEmpty()) {
+                    auto name = mayName.ToLocalChecked();
+                    if (name->IsString() || name->IsStringObject())
+                    {
+                        std::string n = v8pp::from_v8<std::string>(isolate, name);
+                        g->Set(context, name, exports).ToChecked();
+                        SPDLOG_DEBUG("register js module:  {}", n);
+                    }
                 }
-                g->Set(context, name, v).ToChecked();
             }
+        }
+    }
+
+    void loadJsFileInGlobal(v8::Isolate* isolate, std::string_view path) {
+        logScript->debug("load js file in global: {}", path);
+        auto fileSource = readFile(isolate, path.data());
+        if (fileSource.IsEmpty()) {
+            SPDLOG_LOGGER_ERROR(logError, "could not load js file: {}",  path);
+            return;
+        }
+
+        v8::HandleScope handleScope(isolate);
+        TryCatch tryCatch(isolate);
+        auto context = isolate->GetCurrentContext();
+        auto scriptPath = v8::String::NewFromUtf8(isolate, path.data()).ToLocalChecked();
+        ScriptOrigin origin{ scriptPath, 0, 0 };
+        ScriptCompiler::Source source(fileSource.ToLocalChecked(), origin);
+        auto script = ScriptCompiler::Compile(context, &source).ToLocalChecked();
+        if (script.IsEmpty()) {
+            logScript->error("compile file failed: {}", path);
+            if (tryCatch.HasCaught()) {
+                reportException(isolate, path, tryCatch);
+            }
+        }
+        script->Run(context).ToLocalChecked();
+        if (tryCatch.HasCaught()) {
+            logScript->error("exec file failed: {}", path);
+            reportException(isolate, path, tryCatch);
         }
     }
 
@@ -458,8 +539,7 @@ namespace cdf {
 
     void DbCollectionWrapper::setEntityCtor(v8::Local<v8::Function> entityCtor) {
         auto isolate = Isolate::GetCurrent();
-        this->entityCtor = Function(isolate, entityCtor);
-        // SPDLOG_DEBUG("111: {}", this->entityCtor->IsFunction());
+        this->entityCtor = V8Function(isolate, entityCtor);
     }
 
 }

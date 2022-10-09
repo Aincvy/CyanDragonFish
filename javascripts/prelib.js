@@ -1,4 +1,6 @@
-// first load .
+// first load file.
+
+// database part.
 database.collection.prototype.find = function(condition = {}) {
     let r = this._find(condition);
     if(!r) {
@@ -11,9 +13,9 @@ database.collection.prototype.find = function(condition = {}) {
         }
     }
 
-    function mkObject(from) {
+    function mkObject(from, entityCtor) {
         from._id = from._id.$oid;
-        let entity = this.entityCtor();
+        let entity = entityCtor();
         copyObject(from, entity);
         return entity;
     }
@@ -23,14 +25,12 @@ database.collection.prototype.find = function(condition = {}) {
             // multiple object
             let array = Array(r.length);
             for(let i in r) {
-                // let entity = this.entityCtor();
-                // copyObject(i, entity);
-                array.push(mkObject(i));
+                array.push(mkObject(i, this.entityCtor));
             }
             return array;
         } else {
             // single object
-            return mkObject(r);
+            return mkObject(r, this.entityCtor);
         }
     } else {
         print('a inner error is happened..');
@@ -62,5 +62,39 @@ database.collection.prototype.insert = function(value) {
         n[k] = value[k];
     }
     return this._insert(n);
+}
+
+// util function .
+
+function sha256(obj) {
+    return sha256_js.sha256(obj);
+}
+
+function toJsObject(nativeObj) {
+    let n = {};
+    for(let k in nativeObj) {
+        n[k] = nativeObj[k];
+    }
+    return n;
+}
+
+//  service part 
+const Services = {};
+
+function registerServiceObject(name,  obj) {
+    if (typeof obj !==  'object') {
+        return;
+    }
+
+    print('Register service object: ' + name);
+    Services[name] = obj;
+
+    for(let k  in obj) {
+        let n = name ? `${name}.${k}` : k;
+        let f = obj[k];
+        if (typeof f === 'function') {
+            registerService(n, f);    
+        }
+    }
 }
 

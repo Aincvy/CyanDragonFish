@@ -11,7 +11,7 @@ const AccountService = {
             return 1;
         }
         
-        const salt = randomString();
+        const salt = randomString(4);
         const pwd = sha256(salt + password);
         let user = new domain.Account();
         user.username = username;
@@ -19,10 +19,17 @@ const AccountService = {
         user.salt = salt;
         user.createTime = currentTime();
         user.lastLoginTime = currentTime();
-        user._id = user.id = db.account.insert(user);
-        return user;
+        user._id = db.account.insert(user);
+        return 0;
     },
 
+    /**
+     * 
+     * @param {*} player 
+     * @param {*} username 
+     * @param {*} password 
+     * @returns 
+     */
     login(player, username, password) {
         let findUser = db.account.find({ 'username' : username });
         if(!findUser) {
@@ -35,8 +42,22 @@ const AccountService = {
         }
 
         print(`account ${username}, ${findUser.id} is login.`);
-        return findUser;
+        
+        return 0;
     },
     
 };
 
+// let user = AccountService.register({}, 'a123456', '123456');
+// if (typeof user === 'object') {
+//     print("after register, user: " + JSON.stringify(toJsObject(user)));    
+// } else {
+//     print("after register, result: " + user);
+// }
+
+
+let tmp = AccountService.login({}, 'a123456', '123456');
+print('login result: ' + JSON.stringify(toJsObject(tmp)));
+
+// Services.AccountService = AccountService;
+registerServiceObject('AccountService', AccountService);

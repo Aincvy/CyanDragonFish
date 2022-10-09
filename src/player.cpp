@@ -42,13 +42,14 @@ namespace cdf {
             v8::HandleScope handleScope(isolate);
             auto context = v8::Context::New(isolate);
             v8::Context::Scope contextScope(context);
-            registerUtilFunctions(isolate);
+            registerUtilFunctions(isolate, threadLocal);
             loadJsFiles(isolate, server->launchConfig.jsPath("lib/"));
             registerDomain(isolate);
             registerDatabaseOpr(isolate);
-            loadJsFile(isolate, server->launchConfig.jsPath("prelib.js"));
+            loadJsFileInGlobal(isolate, server->launchConfig.jsPath("prelib.js"));
             registerDatabaseObject(isolate, threadLocal);
             loadJsFile(isolate, server->launchConfig.jsPath("postlib.js"));
+            loadJsFiles(isolate, server->launchConfig.path.js);
 
             google::protobuf::TextFormat::Printer printer;
             printer.SetSingleLineMode(true);
@@ -182,6 +183,18 @@ namespace cdf {
         
     }
 
+    PlayerThreadLocal::~PlayerThreadLocal()
+    {
+        serviceFuncMap.clear();
+        isolateScope = nullptr;
+        if (isolate ) {
+            // delete isolate;
+            isolate->Dispose();
+            isolate = nullptr;
+        }
+
+    }
+
     bool PlayerThreadLocal::empty() const {
         return list.empty();
     }
@@ -257,6 +270,10 @@ namespace cdf {
 
     v8::Isolate* PlayerThreadLocal::getIsolate() {
         return isolate;
+    }
+
+    absl::flat_hash_map<std::string, V8Function>&  PlayerThreadLocal::getServiceFuncMap() {
+        return serviceFuncMap;
     }
 
     void onCommand(int cmd, std::function<void(Player* player, msg::GameMsgReq const& msg)> callback) {

@@ -7,11 +7,7 @@
  * @license MIT
  */
 /*jslint bitwise: true */
-print(typeof module)
-print(typeof module.exports)
-print(typeof exports)
-
-(function () {
+let tmp = function () {
   'use strict';
 
   var ERROR = 'input is invalid type';
@@ -519,4 +515,8 @@ print(typeof exports)
       });
     }
   }
-})();
+}
+
+tmp();
+module.name = "sha256_js";
+// print(Object.keys(module.exports));

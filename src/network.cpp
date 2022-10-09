@@ -46,15 +46,15 @@ namespace cdf {
             while (server->isRunning()) {
                 auto now = currentTime(); 
                 {
-                    std::shared_lock<std::shared_mutex> l(server->networkManager.getSessionMapMutex());
-                    auto& map = server->networkManager.getSessionMap();
+                    // std::shared_lock<std::shared_mutex> l(server->networkManager.getSessionMapMutex());
+                    auto map = server->networkManager.getSessionMap();
                     // write buffer to client
                     for(auto & item: map){
                         auto session = item.second;
                         if (session->isClosed())
                         {
                             // 
-                            if (now - session->getCloseTime() > 5 * 60 * 1000) {
+                            if (now - session->getCloseTime() > 5 * 2 * 1000) {
                                 // remove 
                                 server->networkManager.removeSession(session);
                             }
@@ -273,7 +273,7 @@ namespace cdf {
 
     bool NetworkManager::removeSession(absl::flat_hash_map<struct bufferevent *, NetworkSession*>::iterator result) {
         if(result != sessionMap.end()){
-            std::unique_lock<std::shared_mutex> l(sessionMapMutex);
+            std::unique_lock<std::shared_mutex> l(this->sessionMapMutex);
 
             auto session = result->second;
             SPDLOG_LOGGER_INFO(logMessage, "remove session: {}", session->debugString());

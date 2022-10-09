@@ -18,7 +18,6 @@ namespace cdf {
     };
 
     struct Account: Entity {
-        std::string id;
         std::string username;
         // sha256
         std::string password;

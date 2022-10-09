@@ -4,8 +4,12 @@
 
 #pragma once
 
+#include <string>
+
 namespace cdf {
 
     long currentTime();
+
+    std::string randomString(int length = 6);
 
 }

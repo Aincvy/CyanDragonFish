@@ -8,20 +8,24 @@
 #include <string_view>
 #include <v8.h>
 
-#include "player.h"
+#include <v8pp/call_v8.hpp>
+
+// #include "player.h"
+#include "v8pp/convert.hpp"
 
 namespace cdf {
+    using V8Function = v8::Persistent<v8::Function, v8::CopyablePersistentTraits<v8::Function>>;
 
     struct DbClientWrapper;
+    struct PlayerThreadLocal;
 
     struct DbCollectionWrapper {
-        using Function = v8::Persistent<v8::Function, v8::CopyablePersistentTraits<v8::Function>>;
 
         std::string collectionName;
         // DbClientWrapper* client = nullptr;
         PlayerThreadLocal* threadLocal = nullptr;
         // v8::Local<v8::Function> entityCtor;
-        Function entityCtor;
+        V8Function entityCtor;
 
         DbCollectionWrapper(std::string_view cName, PlayerThreadLocal* threadLocal);
 
@@ -48,7 +52,7 @@ namespace cdf {
 
     void registerDatabaseObject(v8::Isolate* isolate, PlayerThreadLocal* threadLocal);
 
-    void registerUtilFunctions(v8::Isolate* isolate);
+    void registerUtilFunctions(v8::Isolate* isolate, PlayerThreadLocal* threadLocal);
 
     /**
      * load and execute all js files in `javascripts` folder.
@@ -56,5 +60,7 @@ namespace cdf {
     void loadJsFiles(v8::Isolate* isolate, std::string_view folder);
 
     void loadJsFile(v8::Isolate* isolate, std::string_view path);
+
+    void loadJsFileInGlobal(v8::Isolate* isolate, std::string_view path);
 
 }

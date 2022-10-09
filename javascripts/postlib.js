@@ -23,6 +23,7 @@ for(let k in a) {
 print(JSON.stringify(n));
 
 print(typeof sha256);
+print(sha256('x1x2x3'))
 
 // db.account.insert(a);
 let result = db.account.find({'username': a.username});
