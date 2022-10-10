@@ -6,6 +6,7 @@
 
 #include "log.h"
 
+#include <absl/container/flat_hash_set.h>
 #include <functional>
 #include <memory>
 #include <spdlog/spdlog.h>
@@ -14,6 +15,7 @@
 #include <thread>
 #include <vector>
 #include <mutex>
+#include <shared_mutex>
 #include <condition_variable>
 
 #include "js_helper.h"
@@ -42,8 +44,6 @@ namespace cdf {
         Player(NetworkSession* session);
         ~Player();
 
-        void login();
-
         NetworkSession* getSession() const;
         void setSession(NetworkSession* session);
 
@@ -54,6 +54,8 @@ namespace cdf {
         void setPlayerThread(PlayerThreadLocal* queue);
 
         PlayerThreadLocal* getPlayerThread();
+
+        void setPlayerId(uint id);
 
     private:
         uint playerId = 0;
@@ -80,14 +82,8 @@ namespace cdf {
 
         void removePlayer(NetworkSession* session);
 
-        void wait();
-
-        void notify();
-
-        std::vector<Player*> getListCopy() const;    
-
         std::vector<Player*>& getList();
-        std::mutex& getListMutex();
+        std::shared_mutex& getListMutex();
 
         void init();
 
@@ -99,8 +95,7 @@ namespace cdf {
 
     private:
         std::vector<Player*> list;
-        std::mutex listMutex; 
-        std::condition_variable condVar;
+        mutable std::shared_mutex listMutex; 
         v8::Isolate* isolate = nullptr;
         std::unique_ptr<v8::Isolate::Scope> isolateScope = nullptr;
 
@@ -114,8 +109,14 @@ namespace cdf {
         
         void init();
 
+        /**
+         * 
+         */
         void addPlayer(Player* p);
 
+        /**
+         * 
+         */
         int createPlayer(NetworkSession* session);
 
         void destroy();
@@ -125,11 +126,22 @@ namespace cdf {
          */
         void removePlayer(NetworkSession* session);
 
+        /**
+         * A player complete login, add it to map.
+         */
+        void addLoginPlayer(Player *p);
+
+        std::mutex& getPlayerMapMutex();
+
     private:
+        // key: playerId
         absl::flat_hash_map<uint, Player*> playerMap;
+        std::mutex playerMapMutex;
         // key sessionId-related.
         absl::flat_hash_map<uint, PlayerThreadLocal*> queueMap;
-        
+        // not login players
+        absl::flat_hash_set<Player*> notLoginPlayerSet;
+
         std::vector<std::thread*> logicThreads;
 
         bool initFlag = false;
@@ -155,12 +167,18 @@ namespace cdf {
 
         v8::Isolate* isolate = threadLocal->getIsolate();
         v8::HandleScope handleScope(isolate);
+        v8::TryCatch tryCatch(isolate);
+
         // auto context =  isolate->GetCurrentContext();
         auto recv = v8::Object::New(isolate);
         auto func =  funcIter->second.Get(isolate);
         v8::Local<v8::Value> result;
         auto playerV8Object  = v8::Object::New(isolate);     // todo 
         result = v8pp::call_v8(isolate, func, recv, playerV8Object,std::forward<Args>(args)...);
+
+        if (tryCatch.HasCaught()) {
+            reportException(isolate, "funcName", tryCatch);
+        }
         if (result.IsEmpty()) {
             return {};
         }

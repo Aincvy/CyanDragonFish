@@ -1,3 +1,5 @@
+#include "common.h"
+#include "domain.h"
 #include "log.h"
 #include "executor.h"
 
@@ -28,6 +30,11 @@ namespace cdf {
         std::function<void(Player*, int)> defaultOnErrorCode(int cmd) {
             auto f = [cmd](Player* p, int c) {
                 p->write(cmd, c);
+
+                if(cmd == Command::LoginAccount && c == ErrorCode::OK) {
+                    p->setPlayerId(nextPlayerId());
+                    currentServer()->playerManager.addLoginPlayer(p);
+                }
             };
             return f;
         }
@@ -55,6 +62,11 @@ namespace cdf {
     void onReqLoginAccount(Player* player, ReqLoginAccount const& req) {
         if (!req.has_account()) {
             return;
+        }
+        if (player->getPlayerId() != 0)
+        {
+            player->write(Command::LoginAccount, ErrorCode::REPEAT_LOGIN);
+            return ;
         }
         
         auto& account = req.account();

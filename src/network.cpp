@@ -296,6 +296,7 @@ namespace cdf {
     {
         initBuffer();
         openFlag = true;
+        createTime = currentTime();
     }
 
     NetworkSession::~NetworkSession()
@@ -314,6 +315,7 @@ namespace cdf {
     void NetworkSession::write(int cmd, int errorCode, google::protobuf::Message* message) {
         GameMsgRes msg;
         msg.set_command(cmd);
+        msg.set_error_code(errorCode);
         if(message) {
             std::string str = message->SerializeAsString();
             msg.set_content(str);
@@ -326,7 +328,7 @@ namespace cdf {
                 logMessage->debug("Send To {},[CEV]: {} {} [{}] {}", playerId, cmd, errorCode, message->GetTypeName(), message->ShortDebugString());
             }
         } else {
-            logMessage->debug("Send To {},[CEV]: {} {} {}", playerId, cmd, errorCode, message->GetTypeName());
+            logMessage->debug("Send To {},[CEV]: {} {}", playerId, cmd, errorCode);
         }
         if (!writeAble) {
             logMessage->debug("Session from playerId({}) is not writeable, msg maybe not arrived. ", playerId);
@@ -466,6 +468,10 @@ namespace cdf {
 
     long NetworkSession::getCloseTime() const {
         return closeTime;
+    }
+
+    long NetworkSession::getCreateTime() const {
+        return createTime;
     }
 
     void NetworkSession::reset() {

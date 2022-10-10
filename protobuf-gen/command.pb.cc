@@ -33,12 +33,12 @@ static constexpr ::_pb::Message* const* file_default_instances = nullptr;
 const char descriptor_table_protodef_command_2eproto[] PROTOBUF_SECTION_VARIABLE(protodesc_cold) =
   "\n\rcommand.proto\022\007cdf.msg*7\n\007Command\022\t\n\005H"
   "ello\020\000\022\021\n\014LoginAccount\020\350\007\022\016\n\tGetMyInfo\020\351"
-  "\007*\'\n\tErrorCode\022\006\n\002OK\020\000\022\022\n\rPASSWORD_FAIL\020"
-  "\350\007b\006proto3"
+  "\007*:\n\tErrorCode\022\006\n\002OK\020\000\022\022\n\rPASSWORD_FAIL\020"
+  "\350\007\022\021\n\014REPEAT_LOGIN\020\351\007b\006proto3"
   ;
 static ::_pbi::once_flag descriptor_table_command_2eproto_once;
 const ::_pbi::DescriptorTable descriptor_table_command_2eproto = {
-    false, false, 130, descriptor_table_protodef_command_2eproto,
+    false, false, 149, descriptor_table_protodef_command_2eproto,
     "command.proto",
     &descriptor_table_command_2eproto_once, nullptr, 0, 0,
     schemas, file_default_instances, TableStruct_command_2eproto::offsets,
@@ -76,6 +76,7 @@ bool ErrorCode_IsValid(int value) {
   switch (value) {
     case 0:
     case 1000:
+    case 1001:
       return true;
     default:
       return false;

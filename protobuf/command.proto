@@ -14,5 +14,6 @@ enum ErrorCode {
     OK = 0;  
 
     PASSWORD_FAIL = 1000;
-
+    REPEAT_LOGIN = 1001;
+    
 }

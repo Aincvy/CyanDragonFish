@@ -24,8 +24,9 @@ namespace Cdf.Msg {
     static CommandReflection() {
       byte[] descriptorData = global::System.Convert.FromBase64String(
           string.Concat(
-            "Cg1jb21tYW5kLnByb3RvEgdjZGYubXNnKhQKB0NvbW1hbmQSCQoFSGVsbG8Q",
-            "ACoTCglFcnJvckNvZGUSBgoCT0sQAGIGcHJvdG8z"));
+            "Cg1jb21tYW5kLnByb3RvEgdjZGYubXNnKjcKB0NvbW1hbmQSCQoFSGVsbG8Q",
+            "ABIRCgxMb2dpbkFjY291bnQQ6AcSDgoJR2V0TXlJbmZvEOkHKicKCUVycm9y",
+            "Q29kZRIGCgJPSxAAEhIKDVBBU1NXT1JEX0ZBSUwQ6AdiBnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(new[] {typeof(global::Cdf.Msg.Command), typeof(global::Cdf.Msg.ErrorCode), }, null, null));
@@ -36,10 +37,13 @@ namespace Cdf.Msg {
   #region Enums
   public enum Command {
     [pbr::OriginalName("Hello")] Hello = 0,
+    [pbr::OriginalName("LoginAccount")] LoginAccount = 1000,
+    [pbr::OriginalName("GetMyInfo")] GetMyInfo = 1001,
   }
 
   public enum ErrorCode {
     [pbr::OriginalName("OK")] Ok = 0,
+    [pbr::OriginalName("PASSWORD_FAIL")] PasswordFail = 1000,
   }
 
   #endregion

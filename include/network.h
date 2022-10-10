@@ -94,6 +94,8 @@ namespace cdf {
         bool isOpen() const;
         long getCloseTime() const;
 
+        long getCreateTime() const;
+
     private: 
         
         struct evbuffer* readBuffer = nullptr;
@@ -106,6 +108,7 @@ namespace cdf {
         std::atomic_bool closedFlag = true;
         // session closed time.
         long closeTime = 0L;
+        long createTime = 0L;
 
         std::string ipAddress;
         ushort port;

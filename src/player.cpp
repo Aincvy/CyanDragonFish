@@ -8,6 +8,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <shared_mutex>
 #include <spdlog/spdlog.h>
 #include <string>
 #include <string_view>
@@ -57,11 +58,11 @@ namespace cdf {
             while (server->isRunning()) {
                 // 
                 if(threadLocal->empty() || !threadLocal->hasMessage()) {
-                    // queue->wait();
                     std::this_thread::sleep_for(1ms);
                     continue;
                 }
 
+                std::shared_lock<std::shared_mutex> l(threadLocal->getListMutex());
                 auto& list = threadLocal->getList();
                 for (auto item : list) {
                     auto session = item->getSession();
@@ -124,6 +125,14 @@ namespace cdf {
         return threadLocal;
     }
 
+    void Player::setPlayerId(uint id) {
+        assert(playerId == 0);
+        playerId = id;
+        if (session) {
+            session->setPlayerId(playerId);
+        }
+    }
+
     void PlayerManager::init() {
         assert(!initFlag);
 
@@ -142,9 +151,12 @@ namespace cdf {
 
     void PlayerManager::addPlayer(Player* p) {
         assert(initFlag);
+
+        std::unique_lock<std::mutex> l(playerMapMutex);
         auto index = p->getSession()->getSessionId() % queueMap.size();
         auto q = queueMap.at(index);
         q->addPlayer(p);
+        notLoginPlayerSet.insert(p);
     }
 
     int PlayerManager::createPlayer(NetworkSession* session) {
@@ -168,13 +180,49 @@ namespace cdf {
 
     void PlayerManager::removePlayer(NetworkSession* session) {
         auto playerId = session->getPlayerId();
-        if (playerId > 0) {
-            // lock ?
-            playerMap.erase(playerId);
-        }
-
+        std::lock_guard<std::mutex> l(playerMapMutex);
         auto index = session->getSessionId() % queueMap.size();
         queueMap.at(index)->removePlayer(session);
+
+        if (playerId > 0) {
+            auto iter = playerMap.find(playerId);
+            if (iter == playerMap.end())
+            {
+                SPDLOG_LOGGER_ERROR(logError, "remove player, but not found, playerId: {}", playerId);
+                return;
+            }
+
+            auto p = playerMap[playerId];
+            playerMap.erase(iter);
+            delete p;
+            p = nullptr;
+        } else {
+            for(auto it = notLoginPlayerSet.begin(); it != notLoginPlayerSet.end(); it++){
+                auto p = *it;
+                if (p->getSession() == session)
+                {
+                    notLoginPlayerSet.erase(it);
+                    delete p;
+                    p = nullptr;
+                    break;
+                }
+            }
+        }
+    }
+
+    void PlayerManager::addLoginPlayer(Player *p) {
+        std::lock_guard<std::mutex> l(playerMapMutex);
+        if (playerMap.contains(p->getPlayerId()))
+        {   
+            SPDLOG_LOGGER_ERROR(logError, "repeated playerId: {}, ignore new one.", p->getPlayerId());
+            return ;
+        }
+        playerMap[p->getPlayerId()] = p;
+        notLoginPlayerSet.erase(p);
+    }
+
+    std::mutex& PlayerManager::getPlayerMapMutex() {
+        return  playerMapMutex;
     }
 
     PlayerThreadLocal::PlayerThreadLocal(mongocxx::pool::entry entry)
@@ -196,13 +244,16 @@ namespace cdf {
     }
 
     bool PlayerThreadLocal::empty() const {
+        std::shared_lock<std::shared_mutex> l(this->listMutex);
         return list.empty();
     }
 
     bool PlayerThreadLocal::hasMessage() const {
         bool flag = false;
+        std::shared_lock<std::shared_mutex> l(this->listMutex);
+
         for (auto const& item : list) {
-            if (item->getSession()->hasMessage())
+            if (item->getSession() && item->getSession()->hasMessage())
             {
                 flag = true;
                 break;
@@ -213,12 +264,15 @@ namespace cdf {
     }
 
     void PlayerThreadLocal::addPlayer(Player* p) {
-        std::lock_guard<std::mutex> l(this->listMutex);
+        std::unique_lock<std::shared_mutex> l(this->listMutex);
+
         list.push_back(p);
         p->setPlayerThread(this);
     }
 
     void PlayerThreadLocal::removePlayer(NetworkSession* session) {
+        std::unique_lock<std::shared_mutex> l(this->listMutex);
+
         for (auto it = list.begin(); it != list.end(); it++) {
             auto player = *it;
             if (player->getSession() == session)
@@ -230,24 +284,11 @@ namespace cdf {
         }
     }
 
-    void PlayerThreadLocal::wait() {
-        std::unique_lock<std::mutex> l(this->listMutex);
-        condVar.wait(l);
-    }
-
-    void PlayerThreadLocal::notify() {
-        condVar.notify_one();
-    }
-
-    std::vector<Player*> PlayerThreadLocal::getListCopy() const {
-        return this->list;
-    }
-
     std::vector<Player*>& PlayerThreadLocal::getList() {
         return this->list;
     }
 
-    std::mutex& PlayerThreadLocal::getListMutex() {
+    std::shared_mutex& PlayerThreadLocal::getListMutex() {
         return listMutex;
     }
 

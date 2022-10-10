@@ -5,6 +5,7 @@ const AccountService = {
      * 
      */
     register(player, username, password) {
+        print(username);
         let findUser = db.account.find({ 'username' : username });
         if (findUser) {
             // username repeated.
@@ -41,7 +42,7 @@ const AccountService = {
             return 2;     // password error
         }
 
-        print(`account ${username}, ${findUser.id} is login.`);
+        print(`account ${username}, ${findUser._id} is login.`);
         
         return 0;
     },

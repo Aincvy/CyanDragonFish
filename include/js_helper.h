@@ -63,4 +63,6 @@ namespace cdf {
 
     void loadJsFileInGlobal(v8::Isolate* isolate, std::string_view path);
 
+    void reportException(v8::Isolate* isolate, std::string_view path, v8::TryCatch const& tryCatch);
+
 }
